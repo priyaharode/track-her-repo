@@ -96,7 +96,7 @@ const trendData = [
 ];
 
 const chatHistory = [
-  { role: "assistant", text: "Hey Priya 🎀 I'm your cycle health assistant. Ask me anything about your symptoms, cycle phases, nutrition, or how you're feeling today." },
+  { role: "assistant", text: "Hey Pretty 🎀 I'm your cycle health assistant. Ask me anything about your symptoms, cycle phases, nutrition, or how you're feeling today." },
 ];
 
 const symptoms = ["Cramps", "Fatigue", "Bloating", "Headache", "Mood swings", "Back pain", "Tender breasts", "Nausea", "Acne", "Cravings"];
@@ -210,12 +210,12 @@ function getPhase(day) {
 ───────────────────────────────────────────── */
 function LandingPage({ onGetStarted, onLogin }) {
   const features = [
-    { icon: "🔮", title: "ML-Powered Predictions", desc: "Our model learns your unique cycle pattern and gets smarter with every log." },
-    { icon: "📅", title: "Cycle Calendar", desc: "Colour-coded phases — menstrual, follicular, ovulation, luteal — all at a glance." },
-    { icon: "📊", title: "Trend Insights", desc: "Track how sleep, stress, mood, and PMS risk shift across your cycle." },
-    { icon: "💬", title: "AI Health Assistant", desc: "Ask anything — symptoms, nutrition, phases — and get empathetic answers." },
-    { icon: "🔔", title: "Smart Reminders", desc: "Period approaching? Get notified before it sneaks up on you." },
-    { icon: "🔒", title: "Completely Private", desc: "Your data is yours. Never shared, never sold. Ever." },
+    {title: "ML-Powered Predictions", desc: "Our model learns your unique cycle pattern and gets smarter with every log." },
+    {title: "Cycle Calendar", desc: "Colour-coded phases — menstrual, follicular, ovulation, luteal — all at a glance." },
+    {title: "Trend Insights", desc: "Track how sleep, stress, mood, and PMS risk shift across your cycle." },
+    {title: "AI Health Assistant", desc: "Ask anything — symptoms, nutrition, phases — and get empathetic answers." },
+    {title: "Smart Reminders", desc: "Period approaching? Get notified before it sneaks up on you." },
+    {title: "Completely Private", desc: "Your data is yours. Never shared, never sold. Ever." },
   ];
   const testimonials = [
     { name: "Rhea M.", text: "Finally an app that actually understands my body. The predictions have been spot-on." },
@@ -683,14 +683,16 @@ function buildCalendar(year, month, cycleStart, cycleLen) {
 /* ─────────────────────────────────────────────
    ░░░  DASHBOARD PAGE  ░░░
 ───────────────────────────────────────────── */
-function Dashboard({ onLogOpen }) {
+function Dashboard({ onLogOpen, user }) {
   const todayCycleDay = 14;
   const phase = getPhase(todayCycleDay);
   const cells = buildCalendar(2026, 2, 1, 28);
 
   return (
     <div className="fade-in" style={{ padding: "24px 24px 100px" }}>
-      <p style={{ fontSize: 12, color: C.txt3, marginBottom: 2 }}>Good morning, Priya ✨</p>
+      <p style={{ fontSize: 12, color: C.txt3, marginBottom: 2 }}>
+        Good morning, {user?.displayName || user?.email?.split("@")[0] || "there"}
+      </p>
       <h1 className="serif" style={{ fontSize: 26, color: C.txt, marginBottom: 20, letterSpacing: "-0.5px" }}>Your cycle dashboard</h1>
 
       <div style={{ background: `linear-gradient(135deg, ${C.bur} 0%, ${C.bur2} 60%, ${C.bur3} 100%)`, borderRadius: 18, padding: "22px 20px", marginBottom: 16, position: "relative", overflow: "hidden" }}>
@@ -710,7 +712,7 @@ function Dashboard({ onLogOpen }) {
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-        {[["Mar 27", "Next period", "📅"], ["72%", "PMS risk", "⚠️"], ["7.2 hrs", "Avg sleep", "😴"]].map(([val, lbl, ico]) => (
+        {[["Mar 27", "Next period"], ["72%", "PMS risk"], ["7.2 hrs", "Avg sleep"]].map(([val, lbl, ico]) => (
           <div key={lbl} className="card" style={{ padding: "14px 12px" }}>
             <div style={{ fontSize: 9, marginBottom: 4 }}>{ico}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: C.txt, marginBottom: 2 }}>{val}</div>
@@ -951,10 +953,10 @@ function TrendsPage() {
 ───────────────────────────────────────────── */
 function InsightsPage() {
   const insights = [
-    { icon: "🔮", title: "Cycle regularity", value: "Regular", desc: "Your cycle has been consistent at 27–29 days for the last 3 months.", confidence: 91 },
-    { icon: "😴", title: "Sleep & PMS link", value: "Strong", desc: "When you sleep under 6.5 hours, your PMS score increases by an avg of 23%.", confidence: 87 },
-    { icon: "💪", title: "Exercise effect", value: "Positive", desc: "Logging exercise days correlates with 18% lower cramp severity on period day 1.", confidence: 78 },
-    { icon: "😤", title: "Stress patterns", value: "Luteal peak", desc: "Your stress scores are consistently highest in days 22–26 of your cycle.", confidence: 93 },
+    { title: "Cycle regularity", value: "Regular", desc: "Your cycle has been consistent at 27–29 days for the last 3 months.", confidence: 91 },
+    { title: "Sleep & PMS link", value: "Strong", desc: "When you sleep under 6.5 hours, your PMS score increases by an avg of 23%.", confidence: 87 },
+    { title: "Exercise effect", value: "Positive", desc: "Logging exercise days correlates with 18% lower cramp severity on period day 1.", confidence: 78 },
+    { title: "Stress patterns", value: "Luteal peak", desc: "Your stress scores are consistently highest in days 22–26 of your cycle.", confidence: 93 },
   ];
 
   return (
@@ -963,7 +965,7 @@ function InsightsPage() {
       <p style={{ fontSize: 12, color: C.txt3, marginBottom: 8 }}>ML-powered patterns from your data</p>
 
       <div style={{ background: C.bur6, borderRadius: 12, padding: "10px 14px", marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 13 }}>💡</span>
+        <span style={{ fontSize: 13 }}>🎀</span>
         <p style={{ fontSize: 12, color: C.txt2, lineHeight: 1.5 }}>Insights improve as you log more. You need 3+ full cycles for high-confidence predictions.</p>
       </div>
 
@@ -1192,8 +1194,7 @@ function RemindersPage() {
 /* ─────────────────────────────────────────────
    ░░░  PROFILE PAGE  ░░░
 ───────────────────────────────────────────── */
-function ProfilePage({ onLogout }) {
-  const [profile] = useState({ ...mockUser });
+function ProfilePage({ onLogout, user }) {
 
   return (
     <div className="fade-in" style={{ padding: "24px 16px 100px" }}>
@@ -1201,27 +1202,29 @@ function ProfilePage({ onLogout }) {
 
       <div className="card" style={{ padding: "24px 20px", marginBottom: 16, textAlign: "center" }}>
         <div style={{ width: 70, height: 70, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 28, color: "#fff" }}>
-          {profile.name[0]}
+          {(user?.displayName || user?.email || "?")[0].toUpperCase()}
         </div>
-        <h2 className="serif" style={{ fontSize: 22, color: C.txt, marginBottom: 3 }}>{profile.name}</h2>
-        <p style={{ fontSize: 13, color: C.txt3 }}>{profile.email}</p>
+        <h2 className="serif" style={{ fontSize: 22, color: C.txt, marginBottom: 3 }}>
+          {user?.displayName || user?.email?.split("@")[0] || "User"}
+        </h2>
+        <p style={{ fontSize: 13, color: C.txt3 }}>{user?.email || ""}</p>
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14 }}>
-          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{profile.cycleLength} day cycle</span>
-          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{profile.periodDuration} day period</span>
+          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{mockUser.cycleLength} day cycle</span>
+          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{mockUser.periodDuration} day period</span>  
         </div>
       </div>
 
       <h3 style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>CYCLE SETTINGS</h3>
       <div className="card" style={{ padding: "0 16px", marginBottom: 16 }}>
         {[
-          { label: "Average cycle length", value: `${profile.cycleLength} days` },
-          { label: "Typical period duration", value: `${profile.periodDuration} days` },
+          { label: "Average cycle length", value: `${mockUser.cycleLength} days` },
+          { label: "Typical period duration", value: `${mockUser.periodDuration} days` },
           { label: "Birth control", value: "None" },
           { label: "Trying to conceive", value: "No" },
         ].map((item, i, arr) => (
           <div key={item.label} style={{ padding: "13px 0", borderBottom: i < arr.length - 1 ? `0.5px solid ${C.bur6}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 13, color: C.txt2 }}>{item.label}</span>
-            <span style={{ fontSize: 13, fontWeight: 500, color: C.bur }}>{item.value}</span>
+            <span style={{ fontSize: 14, color: C.txt2 }}>{item.label}</span>
+            <span style={{ fontSize: 14, fontWeight: 500, color: C.bur }}>{item.value}</span>
           </div>
         ))}
       </div>
@@ -1239,10 +1242,10 @@ function ProfilePage({ onLogout }) {
       <h3 style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>ACCOUNT</h3>
       <div className="card" style={{ padding: "0 16px", marginBottom: 16 }}>
         {[
-          { label: "Export my data", icon: "⬇️" },
-          { label: "Privacy & data", icon: "🔒" },
-          { label: "Notifications", icon: "🔔" },
-          { label: "Help & support", icon: "💬" },
+          { label: "Export my data"},
+          { label: "Privacy & data"},
+          { label: "Notifications"},
+          { label: "Help & support"},
         ].map((item, i, arr) => (
           <div key={item.label} style={{ padding: "13px 0", borderBottom: i < arr.length - 1 ? `0.5px solid ${C.bur6}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}>
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -1273,7 +1276,7 @@ const NAV_ITEMS = [
   { key: "profile", label: "Profile" },
 ];
 
-function AppShell({ children, activePage, setPage }) {
+function AppShell({ children, activePage, setPage, user }) {
   const [showLog, setShowLog] = useState(false);
 
   return (
@@ -1285,11 +1288,15 @@ function AppShell({ children, activePage, setPage }) {
         </div>
 
         <div style={{ padding: "14px 16px", borderBottom: `0.5px solid rgba(125,31,46,0.07)`, display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>P</div>
-          <div style={{ overflow: "hidden" }}>
-            <p style={{ fontSize: 13, fontWeight: 500, color: C.txt, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Priya</p>
-            <p style={{ fontSize: 10, color: C.txt3 }}>Day 14 · Ovulation</p>
-          </div>
+          <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>
+            {(user?.displayName || user?.email || "?")[0].toUpperCase()}
+            </div>
+            <div style={{ overflow: "hidden" }}>
+                <p style={{ fontSize: 13, fontWeight: 500, color: C.txt, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {user?.displayName || user?.email?.split("@")[0] || "User"}
+                </p>
+                <p style={{ fontSize: 10, color: C.txt3 }}>Day 14 · Ovulation</p>
+            </div>
         </div>
 
         <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
@@ -1345,7 +1352,9 @@ function AppShell({ children, activePage, setPage }) {
               {Icon.bell()}
             </button>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: C.bur4, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 600, color: C.bur, cursor: "pointer" }}
-              onClick={() => setPage("profile")}>P</div>
+            onClick={() => setPage("profile")}>
+              {(user?.displayName || user?.email || "?")[0].toUpperCase()}
+              </div>
           </div>
         </div>
 
@@ -1404,19 +1413,19 @@ export default function App() {
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":  return <Dashboard onLogOpen={() => {}} />;
+      case "dashboard":  return <Dashboard onLogOpen={() => {}} user={user} />;
       case "calendar":   return <CalendarPage />;
       case "trends":     return <TrendsPage />;
       case "insights":   return <InsightsPage />;
       case "chat":       return <ChatbotPage />;
       case "reminders":  return <RemindersPage />;
-      case "profile":    return <ProfilePage onLogout={async () => { await logOut(); setPage("dashboard"); }} />;
+      case "profile":    return <ProfilePage onLogout={async () => { await logOut(); setPage("dashboard"); }} user={user} />;
       default:           return <Dashboard onLogOpen={() => {}} />;
     }
   };
 
   return (
-    <AppShell activePage={page} setPage={setPage}>
+    <AppShell activePage={page} setPage={setPage} user={user}>
       {renderPage()}
     </AppShell>
   );
