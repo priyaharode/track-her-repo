@@ -1,11 +1,14 @@
+// trackher.jsx
 import { useState, useEffect, useRef } from "react";
 import {
   LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from "recharts";
+import { signUp, signIn, signInWithGoogle, logOut } from "./auth";
+import { useAuth } from "./AuthContext";
 
 /* ─────────────────────────────────────────────
-   DESIGN TOKENS  (mirrors the UI/UX spec)
+   DESIGN TOKENS
 ───────────────────────────────────────────── */
 const C = {
   bur:  "#7d1f2e",
@@ -20,53 +23,62 @@ const C = {
 };
 
 /* ─────────────────────────────────────────────
-   GLOBAL STYLES injected once
+   GLOBAL STYLES — injected immediately at module load
 ───────────────────────────────────────────── */
-const globalCSS = `
-  @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body, #root { height: 100%; font-family: 'DM Sans', sans-serif; background: ${C.bur5}; color: ${C.txt}; }
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
-  ::-webkit-scrollbar-track { background: ${C.bur5}; }
-  ::-webkit-scrollbar-thumb { background: ${C.bur4}; border-radius: 2px; }
-  .serif { font-family: 'DM Serif Display', serif; }
-  .fade-in { animation: fadeIn 0.4s ease forwards; }
-  .slide-up { animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
-  @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
-  @keyframes slideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }
-  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
-  .btn-primary {
-    background: ${C.bur}; color: ${C.bur5}; border: none; border-radius: 12px;
-    padding: 11px 22px; font-family: 'DM Sans', sans-serif; font-size: 14px;
-    font-weight: 500; cursor: pointer; transition: background 0.15s, transform 0.1s;
-    display: inline-flex; align-items: center; gap: 7px;
-  }
-  .btn-primary:hover { background: ${C.bur2}; }
-  .btn-primary:active { transform: scale(0.98); }
-  .btn-secondary {
-    background: ${C.bur6}; color: ${C.bur}; border: none; border-radius: 12px;
-    padding: 11px 22px; font-family: 'DM Sans', sans-serif; font-size: 14px;
-    font-weight: 500; cursor: pointer; transition: background 0.15s;
-  }
-  .btn-secondary:hover { background: ${C.bur4}; }
-  .card {
-    background: #fff; border-radius: 16px;
-    border: 0.5px solid rgba(125,31,46,0.1);
-    box-shadow: 0 1px 4px rgba(125,31,46,0.06);
-  }
-  .input-field {
-    width: 100%; background: ${C.bur5}; border: 1.5px solid ${C.bur6};
-    border-radius: 12px; padding: 11px 14px; font-family: 'DM Sans', sans-serif;
-    font-size: 14px; color: ${C.txt}; outline: none; transition: border-color 0.15s;
-  }
-  .input-field:focus { border-color: ${C.bur3}; background: #fff; }
-  .input-field::placeholder { color: ${C.txt3}; }
-  .phase-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .tag {
-    display: inline-flex; align-items: center; padding: 4px 10px;
-    border-radius: 20px; font-size: 11px; font-weight: 500;
-  }
-`;
+(() => {
+  const id = "trackher-styles";
+  if (document.getElementById(id)) return;
+  const el = document.createElement("style");
+  el.id = id;
+  el.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&display=swap');
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body, #root { height: 100%; font-family: 'DM Sans', sans-serif; background: #fdf2f4; color: #1a0a0d; }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #fdf2f4; }
+    ::-webkit-scrollbar-thumb { background: #e8b4bf; border-radius: 2px; }
+    .serif { font-family: 'DM Serif Display', serif; }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+    .slide-up { animation: slideUp 0.4s cubic-bezier(0.16,1,0.3,1) forwards; }
+    @keyframes fadeIn { from { opacity:0 } to { opacity:1 } }
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px) } to { opacity:1; transform:translateY(0) } }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .btn-primary {
+      background: #7d1f2e; color: #fdf2f4; border: none; border-radius: 12px;
+      padding: 11px 22px; font-family: 'DM Sans', sans-serif; font-size: 14px;
+      font-weight: 500; cursor: pointer; transition: background 0.15s, transform 0.1s;
+      display: inline-flex; align-items: center; gap: 7px;
+    }
+    .btn-primary:hover { background: #a8354a; }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.7; cursor: not-allowed; }
+    .btn-secondary {
+      background: #f5e2e6; color: #7d1f2e; border: none; border-radius: 12px;
+      padding: 11px 22px; font-family: 'DM Sans', sans-serif; font-size: 14px;
+      font-weight: 500; cursor: pointer; transition: background 0.15s;
+    }
+    .btn-secondary:hover { background: #e8b4bf; }
+    .card {
+      background: #fff; border-radius: 16px;
+      border: 0.5px solid rgba(125,31,46,0.1);
+      box-shadow: 0 1px 4px rgba(125,31,46,0.06);
+    }
+    .input-field {
+      width: 100%; background: #fdf2f4; border: 1.5px solid #f5e2e6;
+      border-radius: 12px; padding: 11px 14px; font-family: 'DM Sans', sans-serif;
+      font-size: 14px; color: #1a0a0d; outline: none; transition: border-color 0.15s;
+    }
+    .input-field:focus { border-color: #c4607a; background: #fff; }
+    .input-field::placeholder { color: #b87a86; }
+    .input-field:disabled { opacity: 0.6; cursor: not-allowed; }
+    .phase-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .tag {
+      display: inline-flex; align-items: center; padding: 4px 10px;
+      border-radius: 20px; font-size: 11px; font-weight: 500;
+    }
+  `;
+  document.head.appendChild(el);
+})();
 
 /* ─────────────────────────────────────────────
    MOCK DATA
@@ -90,7 +102,7 @@ const chatHistory = [
 const symptoms = ["Cramps", "Fatigue", "Bloating", "Headache", "Mood swings", "Back pain", "Tender breasts", "Nausea", "Acne", "Cravings"];
 
 /* ─────────────────────────────────────────────
-   ICONS  (inline SVG helpers)
+   ICONS
 ───────────────────────────────────────────── */
 const Icon = {
   home: (active) => (
@@ -244,7 +256,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           </div>
           {/* APP PREVIEW MOCKUP */}
           <div style={{ marginTop: 56, display: "flex", justifyContent: "center", gap: 16, perspective: 1000, paddingBottom: 0 }}>
-            {/* Phone mockup */}
             <div style={{ width: 200, background: C.bur5, borderRadius: 28, border: `5px solid #1a0a0d`, overflow: "hidden", boxShadow: "0 32px 64px rgba(0,0,0,0.35)", transform: "rotateY(-6deg) rotateX(2deg)", flexShrink: 0 }}>
               <div style={{ background: C.bur, padding: "7px 12px 0", display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: C.bur5, fontSize: 8, fontWeight: 500 }}>9:41</span>
@@ -363,11 +374,58 @@ function LandingPage({ onGetStarted, onLogin }) {
 }
 
 /* ─────────────────────────────────────────────
-   ░░░  AUTH PAGES  ░░░
+   ░░░  AUTH PAGE  ░░░
 ───────────────────────────────────────────── */
-function AuthPage({ mode, onSwitch, onAuth, onBack }) {
+function AuthPage({ mode, onSwitch, onSuccess, onBack }) {
   const [form, setForm] = useState({ name: "", email: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const isLogin = mode === "login";
+
+  const getFriendlyError = (code) => {
+    const errors = {
+      "auth/email-already-in-use": "An account with this email already exists.",
+      "auth/invalid-email": "Please enter a valid email address.",
+      "auth/weak-password": "Password should be at least 6 characters.",
+      "auth/user-not-found": "No account found with this email.",
+      "auth/wrong-password": "Incorrect password. Please try again.",
+      "auth/invalid-credential": "Incorrect email or password. Please try again.",
+      "auth/too-many-requests": "Too many attempts. Please try again later.",
+      "auth/popup-closed-by-user": "Google sign-in was cancelled.",
+    };
+    return errors[code] || "Something went wrong. Please try again.";
+  };
+
+  const handleSubmit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      if (isLogin) {
+        await signIn(form.email, form.password);
+      } else {
+        await signUp(form.name, form.email, form.password);
+      }
+      onSuccess();
+    } catch (err) {
+      setError(getFriendlyError(err.code));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogle = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      await signInWithGoogle();
+      onSuccess();
+    } catch (err) {
+      setError(getFriendlyError(err.code));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: C.bur5, display: "flex", flexDirection: "column" }}>
       <nav style={{ padding: "16px 32px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -391,16 +449,37 @@ function AuthPage({ mode, onSwitch, onAuth, onBack }) {
             {!isLogin && (
               <div>
                 <label style={{ fontSize: 12, fontWeight: 500, color: C.txt2, display: "block", marginBottom: 5 }}>Full name</label>
-                <input className="input-field" placeholder="Your name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                <input
+                  className="input-field"
+                  placeholder="Your name"
+                  value={form.name}
+                  onChange={e => setForm({ ...form, name: e.target.value })}
+                  disabled={loading}
+                />
               </div>
             )}
             <div>
               <label style={{ fontSize: 12, fontWeight: 500, color: C.txt2, display: "block", marginBottom: 5 }}>Email address</label>
-              <input className="input-field" type="email" placeholder="you@example.com" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+              <input
+                className="input-field"
+                type="email"
+                placeholder="you@example.com"
+                value={form.email}
+                onChange={e => setForm({ ...form, email: e.target.value })}
+                disabled={loading}
+              />
             </div>
             <div>
               <label style={{ fontSize: 12, fontWeight: 500, color: C.txt2, display: "block", marginBottom: 5 }}>Password</label>
-              <input className="input-field" type="password" placeholder="••••••••" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} />
+              <input
+                className="input-field"
+                type="password"
+                placeholder="••••••••"
+                value={form.password}
+                onChange={e => setForm({ ...form, password: e.target.value })}
+                disabled={loading}
+                onKeyDown={e => { if (e.key === "Enter") handleSubmit(); }}
+              />
             </div>
 
             {isLogin && (
@@ -409,9 +488,19 @@ function AuthPage({ mode, onSwitch, onAuth, onBack }) {
               </div>
             )}
 
-            <button className="btn-primary" style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 14, marginTop: 4 }}
-              onClick={() => onAuth(form)}>
-              {isLogin ? "Sign in" : "Create account"}
+            {error && (
+              <div style={{ background: "#fff0f2", border: `1px solid ${C.bur4}`, borderRadius: 10, padding: "10px 14px" }}>
+                <p style={{ fontSize: 12.5, color: C.bur, margin: 0 }}>⚠️ {error}</p>
+              </div>
+            )}
+
+            <button
+              className="btn-primary"
+              style={{ width: "100%", justifyContent: "center", padding: "13px", fontSize: 14, marginTop: 4, opacity: loading ? 0.7 : 1 }}
+              onClick={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? "Please wait..." : isLogin ? "Sign in" : "Create account"}
             </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "4px 0" }}>
@@ -420,8 +509,11 @@ function AuthPage({ mode, onSwitch, onAuth, onBack }) {
               <div style={{ flex: 1, height: 1, background: C.bur6 }} />
             </div>
 
-            <button style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.bur6}`, borderRadius: 12, padding: "11px", fontSize: 13, color: C.txt, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "'DM Sans', sans-serif" }}
-              onClick={() => onAuth({ google: true })}>
+            <button
+              style={{ width: "100%", background: "#fff", border: `1.5px solid ${C.bur6}`, borderRadius: 12, padding: "11px", fontSize: 13, color: C.txt, cursor: loading ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: "'DM Sans', sans-serif", opacity: loading ? 0.7 : 1 }}
+              onClick={handleGoogle}
+              disabled={loading}
+            >
               <svg width="18" height="18" viewBox="0 0 48 48">
                 <path d="M44.5 20H24v8.5h11.8C34.7 33.9 29.8 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 11.8 2 2 11.8 2 24s9.8 22 22 22c11 0 21-8 21-22 0-1.3-.2-2.7-.5-4z" fill="#FFC107" />
                 <path d="M6.3 14.7l7 5.1C15 16.5 19.2 14 24 14c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 4.1 29.6 2 24 2 16.3 2 9.6 7.3 6.3 14.7z" fill="#FF3D00" />
@@ -472,7 +564,6 @@ function LogModal({ onClose }) {
           </button>
         </div>
 
-        {/* Step indicators */}
         <div style={{ display: "flex", gap: 6, marginBottom: 24 }}>
           {steps.map((s, i) => (
             <div key={s} style={{ flex: 1, height: 3, borderRadius: 2, background: i <= step ? C.bur : C.bur6, transition: "background 0.3s" }} />
@@ -515,9 +606,9 @@ function LogModal({ onClose }) {
         {step === 2 && (
           <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
             {[
-              { label: "Mood", key: "mood", min: 1, max: 10, low: "😔", high: "😊" },
-              { label: "Energy", key: "energy", min: 1, max: 10, low: "🔋", high: "⚡" },
-              { label: "Stress", key: "stress", min: 1, max: 10, low: "😌", high: "😤" },
+              { label: "Mood", key: "mood", low: "😔", high: "😊" },
+              { label: "Energy", key: "energy", low: "🔋", high: "⚡" },
+              { label: "Stress", key: "stress", low: "😌", high: "😤" },
             ].map(({ label, key, low, high }) => (
               <div key={key}>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -595,14 +686,13 @@ function buildCalendar(year, month, cycleStart, cycleLen) {
 function Dashboard({ onLogOpen }) {
   const todayCycleDay = 14;
   const phase = getPhase(todayCycleDay);
-  const cells = buildCalendar(2026, 2, 1, 28); // March 2026
+  const cells = buildCalendar(2026, 2, 1, 28);
 
   return (
     <div className="fade-in" style={{ padding: "24px 24px 100px" }}>
       <p style={{ fontSize: 12, color: C.txt3, marginBottom: 2 }}>Good morning, Priya ✨</p>
       <h1 className="serif" style={{ fontSize: 26, color: C.txt, marginBottom: 20, letterSpacing: "-0.5px" }}>Your cycle dashboard</h1>
 
-      {/* Hero Card */}
       <div style={{ background: `linear-gradient(135deg, ${C.bur} 0%, ${C.bur2} 60%, ${C.bur3} 100%)`, borderRadius: 18, padding: "22px 20px", marginBottom: 16, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -619,7 +709,6 @@ function Dashboard({ onLogOpen }) {
         </div>
       </div>
 
-      {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
         {[["Mar 27", "Next period", "📅"], ["72%", "PMS risk", "⚠️"], ["7.2 hrs", "Avg sleep", "😴"]].map(([val, lbl, ico]) => (
           <div key={lbl} className="card" style={{ padding: "14px 12px" }}>
@@ -630,7 +719,6 @@ function Dashboard({ onLogOpen }) {
         ))}
       </div>
 
-      {/* Phase Legend */}
       <div className="card" style={{ padding: "14px 16px", marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, color: C.txt, marginBottom: 10 }}>CYCLE PHASES</p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -642,7 +730,6 @@ function Dashboard({ onLogOpen }) {
         </div>
       </div>
 
-      {/* Mini Calendar */}
       <div className="card" style={{ padding: "16px", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <h3 style={{ fontSize: 13, fontWeight: 600, color: C.txt }}>March 2026</h3>
@@ -662,14 +749,12 @@ function Dashboard({ onLogOpen }) {
                 borderRadius: cell.phase === "ovulation" ? "50%" : 5, fontSize: 9,
                 background: isToday ? C.bur : pc.bg, color: isToday ? "#fff" : pc.text,
                 fontWeight: isToday ? 700 : 400,
-                border: isToday ? "none" : "none",
               }}>{cell.day}</div>
             );
           })}
         </div>
       </div>
 
-      {/* Symptoms this cycle */}
       <div className="card" style={{ padding: "16px", marginBottom: 16 }}>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: C.txt, marginBottom: 12 }}>This cycle's symptoms</h3>
         {[["Cramps", 80], ["Fatigue", 60], ["Bloating", 45], ["Headache", 30], ["Mood swings", 55]].map(([s, pct]) => (
@@ -683,7 +768,6 @@ function Dashboard({ onLogOpen }) {
         ))}
       </div>
 
-      {/* Cycle Insight */}
       <div style={{ background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, borderRadius: 14, padding: "16px 18px" }}>
         <div style={{ fontSize: 9, color: C.bur4, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 5, display: "flex", alignItems: "center", gap: 5 }}>
           {Icon.spark()} ML Insight
@@ -693,7 +777,6 @@ function Dashboard({ onLogOpen }) {
         </p>
       </div>
 
-      {/* FAB */}
       <button onClick={onLogOpen} style={{
         position: "fixed", bottom: 80, right: 20, width: 54, height: 54,
         borderRadius: "50%", background: C.bur, border: "none", cursor: "pointer",
@@ -722,7 +805,6 @@ function CalendarPage() {
       <h1 className="serif" style={{ fontSize: 26, color: C.txt, marginBottom: 6, letterSpacing: "-0.5px" }}>Calendar</h1>
       <p style={{ fontSize: 12, color: C.txt3, marginBottom: 20 }}>Your full cycle view</p>
 
-      {/* Phase key */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 18 }}>
         {Object.entries(phaseColors).map(([key, { bg, text, label }]) => (
           <span key={key} style={{ background: bg, color: text, padding: "3px 9px", borderRadius: 16, fontSize: 10, fontWeight: 500 }}>{label}</span>
@@ -764,7 +846,6 @@ function CalendarPage() {
         </div>
       </div>
 
-      {/* Upcoming events */}
       <h3 style={{ fontSize: 14, fontWeight: 600, color: C.txt, margin: "20px 0 10px" }}>Upcoming</h3>
       {[
         { icon: "🔴", label: "Next period", date: "Mar 27", color: C.bur },
@@ -832,7 +913,6 @@ function TrendsPage() {
         </ResponsiveContainer>
       </div>
 
-      {/* Multi-metric overview */}
       <h3 style={{ fontSize: 14, fontWeight: 600, color: C.txt, marginBottom: 12 }}>All metrics this week</h3>
       <div className="card" style={{ padding: "16px" }}>
         <ResponsiveContainer width="100%" height={160}>
@@ -856,7 +936,6 @@ function TrendsPage() {
         </div>
       </div>
 
-      {/* Cycle correlation card */}
       <div style={{ background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, borderRadius: 14, padding: "16px 18px", marginTop: 16 }}>
         <div style={{ fontSize: 10, color: C.bur4, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 8 }}>Pattern detected</div>
         <p style={{ fontSize: 13, color: "rgba(253,242,244,0.88)", lineHeight: 1.6 }}>
@@ -909,7 +988,6 @@ function InsightsPage() {
         </div>
       ))}
 
-      {/* Phase guide */}
       <h3 style={{ fontSize: 14, fontWeight: 600, color: C.txt, margin: "20px 0 10px" }}>Phase guide</h3>
       {[
         { phase: "Menstrual", days: "Days 1–5", tip: "Rest, iron-rich foods, gentle movement. Your body is shedding.", color: C.bur },
@@ -969,7 +1047,6 @@ function ChatbotPage() {
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 60px)", background: C.bur5 }}>
-      {/* Header */}
       <div style={{ background: "#fff", borderBottom: `0.5px solid rgba(125,31,46,0.1)`, padding: "14px 20px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🌸</div>
@@ -983,7 +1060,6 @@ function ChatbotPage() {
         </div>
       </div>
 
-      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
         {messages.map((m, i) => (
           <div key={i} className="fade-in" style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 12 }}>
@@ -1008,7 +1084,6 @@ function ChatbotPage() {
         <div ref={bottomRef} />
       </div>
 
-      {/* Suggestions */}
       {messages.length === 1 && (
         <div style={{ padding: "0 16px 10px", display: "flex", gap: 8, overflowX: "auto", flexShrink: 0 }}>
           {suggestions.map(s => (
@@ -1020,7 +1095,6 @@ function ChatbotPage() {
         </div>
       )}
 
-      {/* Input */}
       <div style={{ background: "#fff", borderTop: `0.5px solid rgba(125,31,46,0.1)`, padding: "12px 16px", flexShrink: 0, paddingBottom: 70 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
           <textarea value={input} onChange={e => setInput(e.target.value)}
@@ -1057,9 +1131,7 @@ function RemindersPage() {
       {[
         {
           section: "Period Alerts",
-          items: [
-            { key: "periodAlert", label: "Period approaching", desc: `Alert me ${reminders.periodDays} days before predicted period`, hasToggle: true },
-          ]
+          items: [{ key: "periodAlert", label: "Period approaching", desc: `Alert me ${reminders.periodDays} days before predicted period`, hasToggle: true }]
         },
         {
           section: "Cycle Alerts",
@@ -1070,9 +1142,7 @@ function RemindersPage() {
         },
         {
           section: "Daily Logging",
-          items: [
-            { key: "logReminder", label: "Daily log reminder", desc: `Remind me to log at ${reminders.logTime}`, hasToggle: true },
-          ]
+          items: [{ key: "logReminder", label: "Daily log reminder", desc: `Remind me to log at ${reminders.logTime}`, hasToggle: true }]
         }
       ].map(section => (
         <div key={section.section}>
@@ -1098,7 +1168,6 @@ function RemindersPage() {
         </div>
       ))}
 
-      {/* Days before picker */}
       <div className="card" style={{ padding: "14px 16px", marginTop: 8 }}>
         <p style={{ fontSize: 13.5, fontWeight: 500, color: C.txt, marginBottom: 6 }}>Alert me this many days before</p>
         <div style={{ display: "flex", gap: 8 }}>
@@ -1124,14 +1193,12 @@ function RemindersPage() {
    ░░░  PROFILE PAGE  ░░░
 ───────────────────────────────────────────── */
 function ProfilePage({ onLogout }) {
-  const [editMode, setEditMode] = useState(false);
-  const [profile, setProfile] = useState({ ...mockUser });
+  const [profile] = useState({ ...mockUser });
 
   return (
     <div className="fade-in" style={{ padding: "24px 16px 100px" }}>
       <h1 className="serif" style={{ fontSize: 26, color: C.txt, marginBottom: 20, letterSpacing: "-0.5px" }}>Profile</h1>
 
-      {/* Avatar + name */}
       <div className="card" style={{ padding: "24px 20px", marginBottom: 16, textAlign: "center" }}>
         <div style={{ width: 70, height: 70, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 28, color: "#fff" }}>
           {profile.name[0]}
@@ -1139,23 +1206,18 @@ function ProfilePage({ onLogout }) {
         <h2 className="serif" style={{ fontSize: 22, color: C.txt, marginBottom: 3 }}>{profile.name}</h2>
         <p style={{ fontSize: 13, color: C.txt3 }}>{profile.email}</p>
         <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 14 }}>
-          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>
-            {profile.cycleLength} day cycle
-          </span>
-          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>
-            {profile.periodDuration} day period
-          </span>
+          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{profile.cycleLength} day cycle</span>
+          <span style={{ background: C.bur5, color: C.bur, padding: "4px 12px", borderRadius: 20, fontSize: 11, fontWeight: 500 }}>{profile.periodDuration} day period</span>
         </div>
       </div>
 
-      {/* Cycle settings */}
       <h3 style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>CYCLE SETTINGS</h3>
       <div className="card" style={{ padding: "0 16px", marginBottom: 16 }}>
         {[
-          { label: "Average cycle length", value: `${profile.cycleLength} days`, key: "cycleLength" },
-          { label: "Typical period duration", value: `${profile.periodDuration} days`, key: "periodDuration" },
-          { label: "Birth control", value: "None", key: null },
-          { label: "Trying to conceive", value: "No", key: null },
+          { label: "Average cycle length", value: `${profile.cycleLength} days` },
+          { label: "Typical period duration", value: `${profile.periodDuration} days` },
+          { label: "Birth control", value: "None" },
+          { label: "Trying to conceive", value: "No" },
         ].map((item, i, arr) => (
           <div key={item.label} style={{ padding: "13px 0", borderBottom: i < arr.length - 1 ? `0.5px solid ${C.bur6}` : "none", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, color: C.txt2 }}>{item.label}</span>
@@ -1164,7 +1226,6 @@ function ProfilePage({ onLogout }) {
         ))}
       </div>
 
-      {/* Stats */}
       <h3 style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>YOUR STATS</h3>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
         {[["3", "Cycles logged"], ["47", "Days tracked"], ["4.2/5", "Avg mood"], ["6.8h", "Avg sleep"]].map(([v, l]) => (
@@ -1175,7 +1236,6 @@ function ProfilePage({ onLogout }) {
         ))}
       </div>
 
-      {/* Account */}
       <h3 style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", marginBottom: 8 }}>ACCOUNT</h3>
       <div className="card" style={{ padding: "0 16px", marginBottom: 16 }}>
         {[
@@ -1202,7 +1262,7 @@ function ProfilePage({ onLogout }) {
 }
 
 /* ─────────────────────────────────────────────
-   ░░░  APP SHELL (desktop sidebar + mobile nav)  ░░░
+   ░░░  APP SHELL  ░░░
 ───────────────────────────────────────────── */
 const NAV_ITEMS = [
   { key: "dashboard", label: "Home" },
@@ -1213,19 +1273,17 @@ const NAV_ITEMS = [
   { key: "profile", label: "Profile" },
 ];
 
-function AppShell({ children, activePage, setPage, onLogout }) {
+function AppShell({ children, activePage, setPage }) {
   const [showLog, setShowLog] = useState(false);
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: C.bur5 }}>
       {/* DESKTOP SIDEBAR */}
       <aside style={{ width: 220, background: "#fff", borderRight: `0.5px solid rgba(125,31,46,0.1)`, display: "flex", flexDirection: "column", padding: "0 0 16px", flexShrink: 0 }}>
-        {/* Logo */}
         <div style={{ padding: "20px 20px 16px", borderBottom: `0.5px solid rgba(125,31,46,0.07)` }}>
           <span className="serif" style={{ fontSize: 22, color: C.bur, letterSpacing: "-0.5px" }}>TrackHER</span>
         </div>
 
-        {/* User */}
         <div style={{ padding: "14px 16px", borderBottom: `0.5px solid rgba(125,31,46,0.07)`, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 13, fontWeight: 600, flexShrink: 0 }}>P</div>
           <div style={{ overflow: "hidden" }}>
@@ -1234,7 +1292,6 @@ function AppShell({ children, activePage, setPage, onLogout }) {
           </div>
         </div>
 
-        {/* Nav */}
         <nav style={{ flex: 1, padding: "12px 10px", overflowY: "auto" }}>
           <p style={{ fontSize: 9, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.8px", padding: "0 8px", marginBottom: 6 }}>Overview</p>
           {NAV_ITEMS.slice(0, 5).map(item => {
@@ -1271,7 +1328,6 @@ function AppShell({ children, activePage, setPage, onLogout }) {
           })}
         </nav>
 
-        {/* Log button */}
         <div style={{ padding: "0 12px 4px" }}>
           <button className="btn-primary" style={{ width: "100%", justifyContent: "center", fontSize: 13, padding: "10px" }}
             onClick={() => setShowLog(true)}>
@@ -1282,7 +1338,6 @@ function AppShell({ children, activePage, setPage, onLogout }) {
 
       {/* MAIN CONTENT */}
       <main style={{ flex: 1, overflowY: "auto", position: "relative" }}>
-        {/* Mobile top bar */}
         <div style={{ background: C.bur, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span className="serif" style={{ color: C.bur5, fontSize: 18 }}>TrackHER</span>
           <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -1320,32 +1375,33 @@ function AppShell({ children, activePage, setPage, onLogout }) {
    ░░░  ROOT APP  ░░░
 ───────────────────────────────────────────── */
 export default function App() {
-  const [screen, setScreen] = useState("landing"); // landing | login | register | app
+  const { user } = useAuth();
+  const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
 
-  // inject global CSS
   useEffect(() => {
-    const id = "trackher-styles";
-    if (!document.getElementById(id)) {
-      const el = document.createElement("style");
-      el.id = id;
-      el.textContent = globalCSS;
-      document.head.appendChild(el);
+    if (user) {
+      setScreen("app");
+    } else if (user === null) {
+      if (screen === "app") setScreen("landing");
     }
-    return () => document.getElementById(id)?.remove();
-  }, []);
+  }, [user]);
 
-  if (screen === "landing") {
-    return <LandingPage onGetStarted={() => setScreen("register")} onLogin={() => setScreen("login")} />;
-  }
-  if (screen === "login") {
-    return <AuthPage mode="login" onSwitch={() => setScreen("register")} onAuth={() => setScreen("app")} onBack={() => setScreen("landing")} />;
-  }
-  if (screen === "register") {
-    return <AuthPage mode="register" onSwitch={() => setScreen("login")} onAuth={() => setScreen("app")} onBack={() => setScreen("landing")} />;
+  if (user === undefined) {
+    return (
+      <div style={{ minHeight: "100vh", background: C.bur5, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <span className="serif" style={{ fontSize: 28, color: C.bur }}>TrackHER</span>
+          <p style={{ fontSize: 13, color: C.txt3, marginTop: 8 }}>Loading...</p>
+        </div>
+      </div>
+    );
   }
 
-  // APP
+  if (screen === "landing") return <LandingPage onGetStarted={() => setScreen("register")} onLogin={() => setScreen("login")} />;
+  if (screen === "login") return <AuthPage mode="login" onSwitch={() => setScreen("register")} onSuccess={() => setScreen("app")} onBack={() => setScreen("landing")} />;
+  if (screen === "register") return <AuthPage mode="register" onSwitch={() => setScreen("login")} onSuccess={() => setScreen("app")} onBack={() => setScreen("landing")} />;
+
   const renderPage = () => {
     switch (page) {
       case "dashboard":  return <Dashboard onLogOpen={() => {}} />;
@@ -1354,13 +1410,13 @@ export default function App() {
       case "insights":   return <InsightsPage />;
       case "chat":       return <ChatbotPage />;
       case "reminders":  return <RemindersPage />;
-      case "profile":    return <ProfilePage onLogout={() => { setScreen("landing"); setPage("dashboard"); }} />;
+      case "profile":    return <ProfilePage onLogout={async () => { await logOut(); setPage("dashboard"); }} />;
       default:           return <Dashboard onLogOpen={() => {}} />;
     }
   };
 
   return (
-    <AppShell activePage={page} setPage={setPage} onLogout={() => { setScreen("landing"); setPage("dashboard"); }}>
+    <AppShell activePage={page} setPage={setPage}>
       {renderPage()}
     </AppShell>
   );
