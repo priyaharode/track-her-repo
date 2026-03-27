@@ -6,10 +6,9 @@ import {
 } from "recharts";
 import { signUp, signIn, signInWithGoogle, logOut } from "./auth";
 import { useAuth } from "./AuthContext";
+import { saveDailyLog, saveCycleSettings, getCycleSettings } from "./db";
+import { getCycleDay, getNextPeriodDate, getPMSRisk, getPhaseFromDay, getPhaseInfo, formatDate, getDaysUntilNextPeriod } from "./cycleUtils";
 
-/* ─────────────────────────────────────────────
-   DESIGN TOKENS
-───────────────────────────────────────────── */
 const C = {
   bur:  "#7d1f2e",
   bur2: "#a8354a",
@@ -22,9 +21,6 @@ const C = {
   txt3: "#b87a86",
 };
 
-/* ─────────────────────────────────────────────
-   GLOBAL STYLES — injected immediately at module load
-───────────────────────────────────────────── */
 (() => {
   const id = "trackher-styles";
   if (document.getElementById(id)) return;
@@ -539,7 +535,7 @@ function AuthPage({ mode, onSwitch, onSuccess, onBack }) {
 /* ─────────────────────────────────────────────
    ░░░  LOG MODAL  ░░░
 ───────────────────────────────────────────── */
-function LogModal({ onClose }) {
+function LogModal({ onClose, uid }) {
   const [step, setStep] = useState(0);
   const [data, setData] = useState({
     lastPeriod: "", flow: 1, symptoms: [],
@@ -654,8 +650,29 @@ function LogModal({ onClose }) {
             <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep(s => s + 1)}>Continue</button>
           )}
           {step === 2 && (
-            <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={() => setStep(3)}>Save log</button>
-          )}
+            <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={async () => {
+              if (uid) {
+                const today = new Date().toISOString().split("T")[0]; // "YYYY-MM-DD"
+                 await saveDailyLog(uid, today, {
+                  flow: data.flow,
+                  symptoms: data.symptoms,
+                  mood: data.mood,
+                  energy: data.energy,
+                  stress: data.stress,
+                  sleep: data.sleep,
+                  notes: data.notes,
+                });
+                // If they entered a last period date, save it to cycle settings too
+                if (data.lastPeriod) {
+                  await saveCycleSettings(uid, {
+                    lastPeriodDate: data.lastPeriod,
+                    cycleLength: 28, // default for now, will be dynamic in Step 11
+                    periodDuration: 5,
+                  });
+                }}
+                setStep(3);
+              }}>Save log</button>
+            )}
           {step === 3 && (
             <button className="btn-primary" style={{ flex: 1, justifyContent: "center" }} onClick={onClose}>Done</button>
           )}
@@ -684,35 +701,102 @@ function buildCalendar(year, month, cycleStart, cycleLen) {
    ░░░  DASHBOARD PAGE  ░░░
 ───────────────────────────────────────────── */
 function Dashboard({ onLogOpen, user }) {
-  const todayCycleDay = 14;
-  const phase = getPhase(todayCycleDay);
-  const cells = buildCalendar(2026, 2, 1, 28);
+  const [cycleData, setCycleData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      if (!user?.uid) return;
+      const settings = await getCycleSettings(user.uid);
+      if (settings) {
+        const cycleDay = getCycleDay(settings.lastPeriodDate, settings.cycleLength);
+        const nextPeriod = getNextPeriodDate(settings.lastPeriodDate, settings.cycleLength);
+        const pmsRisk = getPMSRisk(cycleDay, settings.cycleLength);
+        const phase = getPhaseFromDay(cycleDay, settings.cycleLength);
+        const phaseInfo = getPhaseInfo(phase);
+        const daysUntil = getDaysUntilNextPeriod(settings.lastPeriodDate, settings.cycleLength);
+        setCycleData({
+          cycleDay,
+          nextPeriod: formatDate(nextPeriod),
+          pmsRisk,
+          phase,
+          phaseInfo,
+          daysUntil,
+          cycleLength: settings.cycleLength || 28,
+          lastPeriodDate: settings.lastPeriodDate,
+        });
+      }
+      setLoading(false);
+    };
+    load();
+  }, [user]);
+
+  // Use real data if available, fallback to prompting user to log
+  const cycleDay = cycleData?.cycleDay || null;
+  const phase = cycleData?.phase || "unknown";
+  const phaseInfo = getPhaseInfo(phase);
+  const cells = buildCalendar(
+    new Date().getFullYear(),
+    new Date().getMonth(),
+    cycleData?.lastPeriodDate ? new Date(cycleData.lastPeriodDate).getDate() : 1,
+    cycleData?.cycleLength || 28
+  );
+
+  const userName = user?.displayName || user?.email?.split("@")[0] || "there";
+
+  if (loading) {
+    return (
+      <div style={{ padding: "40px 24px", textAlign: "center" }}>
+        <p style={{ color: C.txt3, fontSize: 13 }}>Loading your cycle data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fade-in" style={{ padding: "24px 24px 100px" }}>
-      <p style={{ fontSize: 12, color: C.txt3, marginBottom: 2 }}>
-        Good morning, {user?.displayName || user?.email?.split("@")[0] || "there"}
-      </p>
+      <p style={{ fontSize: 12, color: C.txt3, marginBottom: 2 }}>Good morning, {userName} ✨</p>
       <h1 className="serif" style={{ fontSize: 26, color: C.txt, marginBottom: 20, letterSpacing: "-0.5px" }}>Your cycle dashboard</h1>
 
-      <div style={{ background: `linear-gradient(135deg, ${C.bur} 0%, ${C.bur2} 60%, ${C.bur3} 100%)`, borderRadius: 18, padding: "22px 20px", marginBottom: 16, position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <div style={{ fontSize: 10, color: C.bur4, textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 4 }}>Cycle day</div>
-            <div className="serif" style={{ fontSize: 48, color: C.bur5, lineHeight: 1 }}>Day {todayCycleDay}</div>
-            <div style={{ fontSize: 12, color: "rgba(253,242,244,0.7)", marginTop: 5 }}>Ovulation window · Peak fertility</div>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
-            <span style={{ background: "rgba(255,255,255,0.14)", color: C.bur5, padding: "5px 11px", borderRadius: 12, fontSize: 11, fontWeight: 500 }}>28 day cycle</span>
-            <span style={{ background: C.bur4, color: C.bur, padding: "5px 11px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>Fertile now</span>
-            <span style={{ background: "rgba(255,255,255,0.14)", color: C.bur5, padding: "5px 11px", borderRadius: 12, fontSize: 11 }}>Next: Mar 27</span>
+      {/* No data state */}
+      {!cycleData && (
+        <div style={{ background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, borderRadius: 18, padding: "28px 24px", marginBottom: 16, textAlign: "center" }}>
+          <div style={{ fontSize: 36, marginBottom: 12 }}>🌸</div>
+          <h2 className="serif" style={{ fontSize: 22, color: C.bur5, marginBottom: 8 }}>Welcome to TrackHER!</h2>
+          <p style={{ fontSize: 13, color: "rgba(253,242,244,0.8)", marginBottom: 20, lineHeight: 1.6 }}>
+            Log your last period date to start seeing your cycle predictions, phases, and insights.
+          </p>
+          <button className="btn-primary" style={{ background: "#fff", color: C.bur }} onClick={onLogOpen}>
+            {Icon.add()} Log your first period
+          </button>
+        </div>
+      )}
+
+      {/* Hero Card — only show when we have data */}
+      {cycleData && (
+        <div style={{ background: `linear-gradient(135deg, ${C.bur} 0%, ${C.bur2} 60%, ${C.bur3} 100%)`, borderRadius: 18, padding: "22px 20px", marginBottom: 16, position: "relative", overflow: "hidden" }}>
+          <div style={{ position: "absolute", right: -20, top: -20, width: 120, height: 120, borderRadius: "50%", background: "rgba(255,255,255,0.04)" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, color: C.bur4, textTransform: "uppercase", letterSpacing: "0.7px", marginBottom: 4 }}>Cycle day</div>
+              <div className="serif" style={{ fontSize: 48, color: C.bur5, lineHeight: 1 }}>Day {cycleDay}</div>
+              <div style={{ fontSize: 12, color: "rgba(253,242,244,0.7)", marginTop: 5 }}>{phaseInfo.label} phase · {phaseInfo.tip.split(".")[0]}</div>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+              <span style={{ background: "rgba(255,255,255,0.14)", color: C.bur5, padding: "5px 11px", borderRadius: 12, fontSize: 11, fontWeight: 500 }}>{cycleData.cycleLength} day cycle</span>
+              <span style={{ background: C.bur4, color: C.bur, padding: "5px 11px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{phaseInfo.emoji} {phaseInfo.label}</span>
+              <span style={{ background: "rgba(255,255,255,0.14)", color: C.bur5, padding: "5px 11px", borderRadius: 12, fontSize: 11 }}>Next: {cycleData.nextPeriod}</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
+      {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-        {[["Mar 27", "Next period"], ["72%", "PMS risk"], ["7.2 hrs", "Avg sleep"]].map(([val, lbl, ico]) => (
+        {[
+          [cycleData?.nextPeriod || "—", "Next period", "📅"],
+          [cycleData ? `${cycleData.pmsRisk}%` : "—", "PMS risk", "⚠️"],
+          [cycleData ? `${cycleData.daysUntil}d away` : "—", "Days left", "⏳"],
+        ].map(([val, lbl, ico]) => (
           <div key={lbl} className="card" style={{ padding: "14px 12px" }}>
             <div style={{ fontSize: 9, marginBottom: 4 }}>{ico}</div>
             <div style={{ fontSize: 15, fontWeight: 600, color: C.txt, marginBottom: 2 }}>{val}</div>
@@ -721,6 +805,7 @@ function Dashboard({ onLogOpen, user }) {
         ))}
       </div>
 
+      {/* Phase Legend */}
       <div className="card" style={{ padding: "14px 16px", marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, color: C.txt, marginBottom: 10 }}>CYCLE PHASES</p>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -732,9 +817,12 @@ function Dashboard({ onLogOpen, user }) {
         </div>
       </div>
 
+      {/* Mini Calendar */}
       <div className="card" style={{ padding: "16px", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <h3 style={{ fontSize: 13, fontWeight: 600, color: C.txt }}>March 2026</h3>
+          <h3 style={{ fontSize: 13, fontWeight: 600, color: C.txt }}>
+            {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </h3>
           <span style={{ fontSize: 11, color: C.bur2, cursor: "pointer" }}>Full calendar →</span>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
@@ -744,7 +832,7 @@ function Dashboard({ onLogOpen, user }) {
           {cells.map((cell, i) => {
             if (!cell) return <div key={i} />;
             const pc = phaseColors[cell.phase];
-            const isToday = cell.day === 26;
+            const isToday = cell.day === new Date().getDate();
             return (
               <div key={i} style={{
                 aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center",
@@ -757,28 +845,17 @@ function Dashboard({ onLogOpen, user }) {
         </div>
       </div>
 
-      <div className="card" style={{ padding: "16px", marginBottom: 16 }}>
-        <h3 style={{ fontSize: 13, fontWeight: 600, color: C.txt, marginBottom: 12 }}>This cycle's symptoms</h3>
-        {[["Cramps", 80], ["Fatigue", 60], ["Bloating", 45], ["Headache", 30], ["Mood swings", 55]].map(([s, pct]) => (
-          <div key={s} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.bur2, flexShrink: 0 }} />
-            <span style={{ fontSize: 12, color: C.txt2, flex: 1 }}>{s}</span>
-            <div style={{ width: 60, height: 4, background: C.bur6, borderRadius: 2 }}>
-              <div style={{ width: `${pct}%`, height: "100%", background: C.bur2, borderRadius: 2 }} />
-            </div>
-          </div>
-        ))}
-      </div>
-
+      {/* Cycle Insight */}
       <div style={{ background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, borderRadius: 14, padding: "16px 18px" }}>
         <div style={{ fontSize: 9, color: C.bur4, textTransform: "uppercase", letterSpacing: "0.6px", marginBottom: 5, display: "flex", alignItems: "center", gap: 5 }}>
-          {Icon.spark()} ML Insight
+          {Icon.spark()} Cycle Insight
         </div>
         <p style={{ fontSize: 13, color: "rgba(253,242,244,0.88)", lineHeight: 1.5 }}>
-          You typically experience cramps 2 days before your period. Based on your patterns, consider preparing early this cycle.
+          {phaseInfo.tip} {cycleData ? `You're on day ${cycleDay} of your ${cycleData.cycleLength}-day cycle.` : "Log your period to get personalised insights."}
         </p>
       </div>
 
+      {/* FAB */}
       <button onClick={onLogOpen} style={{
         position: "fixed", bottom: 80, right: 20, width: 54, height: 54,
         borderRadius: "50%", background: C.bur, border: "none", cursor: "pointer",
@@ -790,7 +867,6 @@ function Dashboard({ onLogOpen, user }) {
     </div>
   );
 }
-
 /* ─────────────────────────────────────────────
    ░░░  CALENDAR PAGE  ░░░
 ───────────────────────────────────────────── */
@@ -1013,42 +1089,144 @@ function InsightsPage() {
    ░░░  CHATBOT PAGE  ░░░
 ───────────────────────────────────────────── */
 function ChatbotPage() {
-  const [messages, setMessages] = useState(chatHistory);
+  const { user } = useAuth();
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: "Hey! 🎀 I'm your cycle health assistant. Ask me anything about your symptoms, cycle phases, nutrition, or how you're feeling today." }
+  ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cycleContext, setCycleContext] = useState(null);
   const bottomRef = useRef(null);
 
   const suggestions = [
     "What should I eat during my period?",
     "Why do I feel so tired on day 1?",
-    "How accurate are my predictions?",
     "What helps with cramps?",
+    "How do I manage PMS mood swings?",
   ];
 
+  useEffect(() => {
+    const load = async () => {
+      if (!user?.uid) return;
+      const settings = await getCycleSettings(user.uid);
+      if (settings) {
+        const cycleDay = getCycleDay(settings.lastPeriodDate, settings.cycleLength);
+        const phase = getPhaseFromDay(cycleDay, settings.cycleLength);
+        const pmsRisk = getPMSRisk(cycleDay, settings.cycleLength);
+        const nextPeriod = getNextPeriodDate(settings.lastPeriodDate, settings.cycleLength);
+        setCycleContext({
+          cycleDay,
+          phase,
+          pmsRisk,
+          nextPeriod: formatDate(nextPeriod),
+          cycleLength: settings.cycleLength
+        });
+      }
+    };
+    load();
+  }, [user]);
+
+  const getRuleBasedResponse = (text, ctx) => {
+    const t = text.toLowerCase();
+
+    // Cycle phase aware responses
+    const phaseMsg = ctx
+      ? `By the way, you're currently on day ${ctx.cycleDay} of your cycle in your ${ctx.phase} phase.`
+      : "";
+
+    if (t.includes("cramp") || t.includes("pain")) {
+      return `For cramps, try a heating pad on your lower abdomen — it's one of the most effective remedies. Ibuprofen or naproxen taken at the first sign of cramps works better than waiting. Light movement like walking or yoga can also help. Magnesium supplements taken daily through your cycle may reduce cramping over time. ${phaseMsg}`;
+    }
+    if (t.includes("eat") || t.includes("food") || t.includes("diet") || t.includes("nutrition")) {
+      if (ctx?.phase === "period") {
+        return `During your period, focus on iron-rich foods like spinach, lentils, and red meat to replenish what you lose. Dark chocolate and magnesium-rich foods like nuts and seeds help ease cramps. Avoid excess salt and caffeine which can worsen bloating. Warm ginger tea is great for comfort and reducing inflammation. 🍵`;
+      }
+      if (ctx?.phase === "follicular") {
+        return `In your follicular phase, your estrogen is rising so your metabolism is more efficient. Focus on lean proteins, fermented foods like yogurt and kimchi, and plenty of vegetables. This is a great time for lighter, energising meals. Your body is building up to ovulation so nutrient-dense foods help. 🥗`;
+      }
+      if (ctx?.phase === "ovulation") {
+        return `During ovulation, focus on anti-inflammatory foods — berries, leafy greens, and omega-3 rich foods like salmon and flaxseeds. Zinc-rich foods like pumpkin seeds support healthy ovulation. Stay well hydrated as your body temperature is slightly higher now. ✨`;
+      }
+      if (ctx?.phase === "luteal") {
+        return `In your luteal phase, cravings are completely normal — your body needs more calories right now. Focus on complex carbs like sweet potato and oats to stabilise mood, magnesium-rich foods to ease PMS, and reduce caffeine and alcohol which worsen symptoms. Dark chocolate is actually a good choice here! 🍫`;
+      }
+      return `Eating well through your cycle makes a big difference. During your period focus on iron and magnesium, in your follicular phase eat light and energising foods, around ovulation go anti-inflammatory, and in your luteal phase focus on complex carbs and magnesium to ease PMS. ${phaseMsg}`;
+    }
+    if (t.includes("tired") || t.includes("fatigue") || t.includes("energy") || t.includes("exhausted")) {
+      return `Fatigue is one of the most common cycle symptoms. ${ctx?.phase === "period" ? "During your period, your body is working hard shedding the uterine lining — rest is essential, not a luxury." : ctx?.phase === "luteal" ? "In the luteal phase, progesterone has a sedative effect which causes tiredness. This is completely normal." : "Low energy can happen at any phase."} Try prioritising sleep, eating iron-rich foods, staying hydrated, and reducing caffeine which causes energy crashes. Light exercise like a short walk can actually boost energy more than resting. ${phaseMsg}`;
+    }
+    if (t.includes("pms") || t.includes("mood") || t.includes("irritable") || t.includes("emotional") || t.includes("anxious")) {
+      return `PMS mood symptoms are caused by the drop in estrogen and progesterone before your period. ${ctx ? `Your current PMS risk is ${ctx.pmsRisk}%.` : ""} Things that genuinely help: magnesium supplementation (400mg daily), regular exercise, reducing sugar and caffeine, getting enough sleep, and tracking your triggers. Some people find evening primrose oil helpful. If symptoms severely impact your life, speak to a doctor about PMDD. ${phaseMsg}`;
+    }
+    if (t.includes("bloat") || t.includes("bloating")) {
+      return `Bloating is super common, especially in the days before your period when progesterone causes water retention. Reduce salt intake, avoid carbonated drinks, eat smaller meals, and try peppermint tea or ginger tea. Light movement helps move gas through your system. Magnesium can help reduce water retention over time. ${phaseMsg}`;
+    }
+    if (t.includes("headache") || t.includes("migraine")) {
+      return `Hormonal headaches are usually triggered by the drop in estrogen just before your period. Stay well hydrated, maintain consistent sleep, and avoid skipping meals. If they're severe, ibuprofen or aspirin taken early helps most. Some people find magnesium supplementation reduces hormonal migraines significantly over time. If migraines are debilitating, speak to a doctor — there are specific treatments. ${phaseMsg}`;
+    }
+    if (t.includes("sleep") || t.includes("insomnia")) {
+      return `Sleep is strongly affected by your cycle. ${ctx?.phase === "luteal" ? "In your luteal phase, progesterone initially helps sleep but the drop before your period can cause insomnia." : ctx?.phase === "period" ? "During your period, cramps and discomfort can disrupt sleep — a heating pad and ibuprofen before bed help." : ""} Try keeping a consistent sleep schedule, avoiding screens an hour before bed, and keeping your room cool. Magnesium glycinate taken before bed is one of the most effective natural sleep aids. ${phaseMsg}`;
+    }
+    if (t.includes("exercise") || t.includes("workout") || t.includes("gym")) {
+      if (ctx?.phase === "period") return `During your period, gentle movement is actually better than rest for most people — it releases endorphins that reduce cramps and improve mood. Try walking, light yoga, or swimming. Skip high intensity if you're feeling low energy, there's no shame in a rest day either. 🧘`;
+      if (ctx?.phase === "follicular") return `Your follicular phase is the best time for high intensity workouts! Rising estrogen boosts strength, endurance, and recovery. This is when you'll feel your strongest — great time for new fitness goals, heavy lifting, or trying something new. 💪`;
+      if (ctx?.phase === "ovulation") return `Around ovulation you have peak energy and strength. You'll likely feel your most athletic right now. Great time for competitive sports, HIIT, or challenging yourself. Just be aware that ligament laxity increases slightly around ovulation so warm up well. ✨`;
+      if (ctx?.phase === "luteal") return `In your luteal phase, energy gradually decreases. Shift toward moderate intensity — pilates, hiking, cycling, or yoga. Listen to your body and don't push through exhaustion. Exercise still really helps with PMS symptoms, especially mood and bloating. 🌙`;
+      return `Exercise affects and is affected by your cycle. You tend to be strongest in the follicular and ovulation phases, and benefit most from gentle movement in the luteal phase and during your period. Tuning workouts to your cycle can significantly improve both performance and recovery. ${phaseMsg}`;
+    }
+    if (t.includes("ovulat") || t.includes("fertile") || t.includes("fertility")) {
+      return `${ctx?.phase === "ovulation" ? "You're currently in your ovulation window — this is your most fertile time!" : `Your ovulation typically occurs around day ${Math.round((ctx?.cycleLength || 28) * 0.5)} of your cycle.`} Signs of ovulation include clear stretchy discharge, a slight rise in basal body temperature, and sometimes mild one-sided cramping called mittelschmerz. Your fertile window is roughly 5 days before ovulation through the day of ovulation. ${phaseMsg}`;
+    }
+    if (t.includes("irregular") || t.includes("late") || t.includes("missed") || t.includes("skip")) {
+      return `Irregular cycles are common and can be caused by stress, significant weight changes, thyroid issues, PCOS, or just natural variation. Cycles anywhere from 21 to 35 days are considered normal. If your periods have become significantly irregular, very heavy, or you've missed more than 3 in a row, it's worth speaking to a doctor to rule out underlying causes.`;
+    }
+    if (t.includes("acne") || t.includes("skin") || t.includes("breakout")) {
+      return `Hormonal acne typically flares up in the week before your period when androgen levels rise. ${ctx?.phase === "luteal" ? "You're in your luteal phase right now which is when most hormonal breakouts occur." : ""} Keeping your skincare routine consistent, avoiding touching your face, and reducing dairy and high-glycemic foods can help. Salicylic acid and niacinamide are great skincare ingredients for hormonal acne. If it's severe, a dermatologist can discuss options like topical retinoids or hormonal treatments.`;
+    }
+    if (t.includes("stress") || t.includes("overwhelm") || t.includes("burnout")) {
+      return `Stress and your cycle have a two-way relationship — stress disrupts your cycle, and your cycle affects how you handle stress. ${ctx?.phase === "luteal" ? `You're in your luteal phase where stress sensitivity is highest — your PMS risk is currently ${ctx.pmsRisk}%.` : ""} Prioritise rest, set boundaries, try breathwork or meditation, and remember that your capacity genuinely varies through your cycle. Be kind to yourself. 🌸`;
+    }
+    if (t.includes("phase") || t.includes("what phase") || t.includes("which phase")) {
+      if (ctx) {
+        const info = getPhaseInfo(ctx.phase);
+        return `You're currently in your ${info.label} phase (day ${ctx.cycleDay} of ${ctx.cycleLength}). ${info.tip} Your next period is expected around ${ctx.nextPeriod}.`;
+      }
+      return `Your cycle has four phases: Menstrual (days 1–5), Follicular (days 6–12), Ovulation (days 13–15), and Luteal (days 16–28). Each phase has different hormone levels that affect your energy, mood, metabolism, and more. Log your period date to see which phase you're in!`;
+    }
+    if (t.includes("next period") || t.includes("when") || t.includes("predict")) {
+      if (ctx) {
+        return `Based on your cycle data, your next period is expected around ${ctx.nextPeriod}. You're currently on day ${ctx.cycleDay} of your ${ctx.cycleLength}-day cycle. Remember predictions improve the more cycles you log!`;
+      }
+      return `Log your last period date in the app to get a prediction for your next period. The more cycles you log, the more accurate the predictions become!`;
+    }
+    if (t.includes("hello") || t.includes("hi") || t.includes("hey")) {
+      return `Hey there! 🌸 ${ctx ? `I can see you're on day ${ctx.cycleDay} of your cycle in your ${ctx.phase} phase.` : "Log your cycle data to get personalised insights!"} What can I help you with today? You can ask me about symptoms, nutrition, exercise, phases, or anything cycle-related!`;
+    }
+
+    // Default response
+    return `That's a great question! ${ctx ? `Given that you're in your ${ctx.phase} phase (day ${ctx.cycleDay}), ` : ""}cycle health is really personal and varies for everyone. I'd recommend tracking your symptoms over a few cycles to spot your own patterns. In the meantime, the pillars of good cycle health are: consistent sleep, magnesium-rich foods, regular gentle movement, and stress management. Is there something more specific I can help with? 🌸`;
+  };
+
   const sendMsg = (text) => {
-    if (!text.trim()) return;
+    if (!text.trim() || loading) return;
     const userMsg = { role: "user", text };
     setMessages(m => [...m, userMsg]);
     setInput("");
     setLoading(true);
+
+    // Simulate thinking delay
     setTimeout(() => {
-      const responses = {
-        "period": "During your period, iron-rich foods like spinach and lentils can help replenish what your body loses. Dark chocolate (yes, really!) and magnesium-rich foods can ease cramps. Stay hydrated and consider warm ginger tea for comfort. 🍵",
-        "tired": "Fatigue on day 1 is completely normal — your body is working hard! Progesterone drops sharply which causes low energy. Prioritise sleep, reduce caffeine, and eat small protein-rich meals throughout the day.",
-        "accurate": `Right now your model has an R² of 0.42, which means it's learning your patterns. The more cycles you log, the better it gets. After 3 full cycles, predictions typically become much more accurate. Keep logging! 📊`,
-        "cramps": "A few things that genuinely help: heat therapy (heating pad on your abdomen), light exercise like walking, magnesium supplements, NSAIDs like ibuprofen taken early. Also, staying hydrated and avoiding salty/sugary foods can reduce bloating that worsens cramp discomfort.",
-      };
-      const key = Object.keys(responses).find(k => text.toLowerCase().includes(k));
-      const reply = key ? responses[key] : "That's a great question! Based on your cycle data and general wellness research, I'd recommend tracking this symptom over the next few cycles so I can give you a more personalised answer. In the meantime, gentle movement, staying hydrated, and reducing stress tend to help with most cycle-related concerns. 🌸";
+      const reply = getRuleBasedResponse(text, cycleContext);
       setMessages(m => [...m, { role: "assistant", text: reply }]);
       setLoading(false);
-    }, 1200);
+    }, 800);
   };
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 60px)", background: C.bur5 }}>
+      {/* Header */}
       <div style={{ background: "#fff", borderBottom: `0.5px solid rgba(125,31,46,0.1)`, padding: "14px 20px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🌸</div>
@@ -1056,12 +1234,15 @@ function ChatbotPage() {
             <h1 style={{ fontSize: 14, fontWeight: 600, color: C.txt }}>Cycle Assistant</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4caf50", animation: "pulse-dot 2s infinite" }} />
-              <span style={{ fontSize: 11, color: C.txt3 }}>Online · Powered by AI</span>
+              <span style={{ fontSize: 11, color: C.txt3 }}>
+                {cycleContext ? `Day ${cycleContext.cycleDay} · ${cycleContext.phase}` : "Online · Cycle Assistant"}
+              </span>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Messages */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px" }}>
         {messages.map((m, i) => (
           <div key={i} className="fade-in" style={{ display: "flex", justifyContent: m.role === "user" ? "flex-end" : "flex-start", marginBottom: 12 }}>
@@ -1069,41 +1250,57 @@ function ChatbotPage() {
               <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, marginRight: 8, flexShrink: 0, marginTop: 2 }}>🌸</div>
             )}
             <div style={{
-              maxWidth: "75%", padding: "10px 14px", borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "4px 16px 16px 16px",
-              background: m.role === "user" ? C.bur : "#fff", color: m.role === "user" ? C.bur5 : C.txt,
-              fontSize: 13, lineHeight: 1.6, border: m.role === "user" ? "none" : `0.5px solid rgba(125,31,46,0.1)`,
+              maxWidth: "75%", padding: "10px 14px",
+              borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "4px 16px 16px 16px",
+              background: m.role === "user" ? C.bur : "#fff",
+              color: m.role === "user" ? C.bur5 : C.txt,
+              fontSize: 13, lineHeight: 1.6,
+              border: m.role === "user" ? "none" : `0.5px solid rgba(125,31,46,0.1)`,
+              whiteSpace: "pre-wrap",
             }}>{m.text}</div>
           </div>
         ))}
+
         {loading && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 0" }}>
             <div style={{ width: 28, height: 28, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}>🌸</div>
             <div style={{ background: "#fff", borderRadius: "4px 16px 16px 16px", padding: "12px 16px", display: "flex", gap: 5, border: `0.5px solid rgba(125,31,46,0.1)` }}>
-              {[0, 1, 2].map(i => <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.bur4, animation: `pulse-dot 1.2s infinite ${i * 0.2}s` }} />)}
+              {[0, 1, 2].map(i => (
+                <div key={i} style={{ width: 6, height: 6, borderRadius: "50%", background: C.bur4, animation: `pulse-dot 1.2s infinite ${i * 0.2}s` }} />
+              ))}
             </div>
           </div>
         )}
         <div ref={bottomRef} />
       </div>
 
+      {/* Suggestions */}
       {messages.length === 1 && (
         <div style={{ padding: "0 16px 10px", display: "flex", gap: 8, overflowX: "auto", flexShrink: 0 }}>
           {suggestions.map(s => (
             <button key={s} onClick={() => sendMsg(s)} style={{
-              background: "#fff", border: `1px solid ${C.bur4}`, borderRadius: 16, padding: "7px 14px",
-              fontSize: 11.5, color: C.bur, cursor: "pointer", whiteSpace: "nowrap"
+              background: "#fff", border: `1px solid ${C.bur4}`, borderRadius: 16,
+              padding: "7px 14px", fontSize: 11.5, color: C.bur, cursor: "pointer", whiteSpace: "nowrap"
             }}>{s}</button>
           ))}
         </div>
       )}
 
-      <div style={{ background: "#fff", borderTop: `0.5px solid rgba(125,31,46,0.1)`, padding: "12px 16px", flexShrink: 0, paddingBottom: 70 }}>
+      {/* Input */}
+      <div style={{ background: "#fff", borderTop: `0.5px solid rgba(125,31,46,0.1)`, padding: "12px 16px 70px", flexShrink: 0 }}>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(input); }}}
+          <textarea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMsg(input); } }}
             placeholder="Ask anything about your cycle..."
-            rows={1} style={{ flex: 1, resize: "none", background: C.bur5, border: `1.5px solid ${C.bur6}`, borderRadius: 12, padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", color: C.txt, maxHeight: 80 }} />
-          <button onClick={() => sendMsg(input)} style={{ width: 38, height: 38, borderRadius: "50%", background: input.trim() ? C.bur : C.bur4, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", flexShrink: 0 }}>
+            rows={1}
+            style={{ flex: 1, resize: "none", background: C.bur5, border: `1.5px solid ${C.bur6}`, borderRadius: 12, padding: "10px 14px", fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", color: C.txt, maxHeight: 80 }}
+          />
+          <button
+            onClick={() => sendMsg(input)}
+            disabled={loading || !input.trim()}
+            style={{ width: 38, height: 38, borderRadius: "50%", background: input.trim() && !loading ? C.bur : C.bur4, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", flexShrink: 0 }}>
             {Icon.send()}
           </button>
         </div>
@@ -1276,9 +1473,8 @@ const NAV_ITEMS = [
   { key: "profile", label: "Profile" },
 ];
 
-function AppShell({ children, activePage, setPage, user }) {
-  const [showLog, setShowLog] = useState(false);
-
+function AppShell({ children, activePage, setPage, user, showLog, setShowLog }) {
+  
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: C.bur5 }}>
       {/* DESKTOP SIDEBAR */}
@@ -1375,7 +1571,7 @@ function AppShell({ children, activePage, setPage, user }) {
         </div>
       </main>
 
-      {showLog && <LogModal onClose={() => setShowLog(false)} />}
+      {showLog && <LogModal onClose={() => setShowLog(false)} uid={user?.uid} />}
     </div>
   );
 }
@@ -1387,6 +1583,7 @@ export default function App() {
   const { user } = useAuth();
   const [screen, setScreen] = useState("landing");
   const [page, setPage] = useState("dashboard");
+  const [showLog, setShowLog] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -1413,20 +1610,20 @@ export default function App() {
 
   const renderPage = () => {
     switch (page) {
-      case "dashboard":  return <Dashboard onLogOpen={() => {}} user={user} />;
+      case "dashboard":  return <Dashboard onLogOpen={() => setShowLog(true)} user={user} />;
       case "calendar":   return <CalendarPage />;
       case "trends":     return <TrendsPage />;
       case "insights":   return <InsightsPage />;
       case "chat":       return <ChatbotPage />;
       case "reminders":  return <RemindersPage />;
       case "profile":    return <ProfilePage onLogout={async () => { await logOut(); setPage("dashboard"); }} user={user} />;
-      default:           return <Dashboard onLogOpen={() => {}} />;
+      default:           return <Dashboard onLogOpen={() => setShowLog(true)} user={user} />;
     }
   };
 
   return (
-    <AppShell activePage={page} setPage={setPage} user={user}>
+    <AppShell activePage={page} setPage={setPage} user={user} showLog={showLog} setShowLog={setShowLog}>
       {renderPage()}
     </AppShell>
-  );
+  );  
 }
