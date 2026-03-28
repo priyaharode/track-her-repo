@@ -59,3 +59,13 @@ export const getCycleSettings = async (uid) => {
   }
   return null;
 };
+
+// Get ALL logs across all time (for smart predictions)
+export const getAllLogsAllTime = async (uid) => {
+  const q = query(
+    collection(db, "users", uid, "logs"),
+    orderBy("date", "asc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map(d => d.data());
+};

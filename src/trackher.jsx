@@ -5,8 +5,8 @@ import {
 } from "recharts";
 import { signUp, signIn, signInWithGoogle, logOut } from "./auth";
 import { useAuth } from "./AuthContext";
-import { saveDailyLog, saveCycleSettings, getCycleSettings, getAllLogs } from "./db";
-import { getCycleDay, getNextPeriodDate, getPMSRisk, getPhaseFromDay, getPhaseInfo, formatDate, getDaysUntilNextPeriod } from "./cycleUtils";
+import { saveDailyLog, saveCycleSettings, getCycleSettings, getAllLogs, getDailyLog, getAllLogsAllTime } from "./db";
+import { getCycleDay, getNextPeriodDate, getPMSRisk, getPhaseFromDay, getPhaseInfo, formatDate, getDaysUntilNextPeriod, calculateSmartCycleLength } from "./cycleUtils";
 
 const C = {
   bur:  "#7d1f2e",
@@ -92,6 +92,10 @@ const C = {
     .floating-orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.4; animation: float 8s ease-in-out infinite; }
     .shimmer-effect { position: relative; overflow: hidden; }
     .shimmer-effect::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.3) 50%, transparent 100%); background-size: 200% 100%; animation: shimmer 2s infinite; }
+    .cal-day { transition: all 0.15s cubic-bezier(0.16,1,0.3,1); }
+    .cal-day:hover { transform: scale(1.08); }
+    .cal-day.period-day { background: linear-gradient(135deg, #7d1f2e, #a8354a) !important; color: #fdf2f4 !important; box-shadow: 0 4px 12px rgba(125,31,46,0.35); }
+    .cal-day.selected-edit { background: rgba(125,31,46,0.15) !important; border: 2px solid #7d1f2e !important; }
     @media (max-width: 768px) { .glass-card { border-radius: 18px; } .btn-primary, .btn-secondary { padding: 11px 20px; font-size: 13px; } }
   `;
   document.head.appendChild(el);
@@ -118,90 +122,25 @@ const wellnessData = [
 const symptoms = ["Cramps", "Fatigue", "Bloating", "Headache", "Mood swings", "Back pain", "Tender breasts", "Nausea", "Acne", "Cravings"];
 
 const Icon = {
-  home: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M2 8L10 2l8 6v9a1 1 0 01-1 1H3a1 1 0 01-1-1V8z" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill={active ? C.bur5 : "none"} />
-      <rect x="7" y="12" width="6" height="6" rx="1" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" />
-    </svg>
-  ),
-  calendar: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <rect x="2" y="3.5" width="16" height="14" rx="2.5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" />
-      <line x1="6.5" y1="1" x2="6.5" y2="6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="13.5" y1="1" x2="13.5" y2="6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="2" y1="8.5" x2="18" y2="8.5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" />
-    </svg>
-  ),
-  trends: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <polyline points="2,15 6,10 9,12 14,6 18,9" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  insights: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <circle cx="10" cy="9" r="5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" />
-      <line x1="10" y1="14.5" x2="10" y2="18" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="7.5" y1="18" x2="12.5" y2="18" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="10" y1="7" x2="10" y2="9.5" stroke={active ? C.bur : C.txt3} strokeWidth="2" strokeLinecap="round" />
-      <circle cx="10" cy="11" r="0.9" fill={active ? C.bur : C.txt3} />
-    </svg>
-  ),
-  chat: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M2 4A2 2 0 014 2h12a2 2 0 012 2v9a2 2 0 01-2 2H6l-4 4V4z" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinejoin="round" fill={active ? C.bur5 : "none"} />
-    </svg>
-  ),
-  profile: (active) => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <circle cx="10" cy="7" r="4" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" />
-      <path d="M2 18c0-3.5 3.582-6 8-6s8 2.5 8 6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  ),
-  bell: () => (
-    <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-      <path d="M10 2a5.5 5.5 0 015.5 5.5v3.5l2 2.5H2.5l2-2.5V7.5A5.5 5.5 0 0110 2z" stroke={C.txt3} strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M7.5 15.5a2.5 2.5 0 005 0" stroke={C.txt3} strokeWidth="1.6" />
-      <circle cx="15" cy="5" r="3" fill="#ff4757" />
-    </svg>
-  ),
-  add: () => (
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-      <line x1="11" y1="4" x2="11" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-      <line x1="4" y1="11" x2="18" y2="11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
-  ),
-  arrow: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-      <polyline points="10,3 16,9 10,15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-  send: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M15 9L3 3l3 6L3 15l12-6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" />
-    </svg>
-  ),
-  close: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <line x1="3" y1="3" x2="15" y2="15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="15" y1="3" x2="3" y2="15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-    </svg>
-  ),
-  spark: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" />
-    </svg>
-  ),
-  heart: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M9 15.5s-6-3.5-6-8a3.5 3.5 0 017 0 3.5 3.5 0 017 0c0 4.5-6 8-6 8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" />
-    </svg>
-  ),
-  star: () => (
-    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-      <path d="M9 2l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" />
-    </svg>
-  ),
+  home: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M2 8L10 2l8 6v9a1 1 0 01-1 1H3a1 1 0 01-1-1V8z" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" fill={active ? C.bur5 : "none"} /><rect x="7" y="12" width="6" height="6" rx="1" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" /></svg>),
+  calendar: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="3.5" width="16" height="14" rx="2.5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" /><line x1="6.5" y1="1" x2="6.5" y2="6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" /><line x1="13.5" y1="1" x2="13.5" y2="6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" /><line x1="2" y1="8.5" x2="18" y2="8.5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" /></svg>),
+  trends: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><polyline points="2,15 6,10 9,12 14,6 18,9" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>),
+  insights: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="9" r="5" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" /><line x1="10" y1="14.5" x2="10" y2="18" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" /><line x1="7.5" y1="18" x2="12.5" y2="18" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" /><line x1="10" y1="7" x2="10" y2="9.5" stroke={active ? C.bur : C.txt3} strokeWidth="2" strokeLinecap="round" /><circle cx="10" cy="11" r="0.9" fill={active ? C.bur : C.txt3} /></svg>),
+  chat: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M2 4A2 2 0 014 2h12a2 2 0 012 2v9a2 2 0 01-2 2H6l-4 4V4z" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinejoin="round" fill={active ? C.bur5 : "none"} /></svg>),
+  profile: (active) => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="7" r="4" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" /><path d="M2 18c0-3.5 3.582-6 8-6s8 2.5 8 6" stroke={active ? C.bur : C.txt3} strokeWidth="1.8" strokeLinecap="round" /></svg>),
+  bell: () => (<svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a5.5 5.5 0 015.5 5.5v3.5l2 2.5H2.5l2-2.5V7.5A5.5 5.5 0 0110 2z" stroke={C.txt3} strokeWidth="1.6" strokeLinejoin="round" /><path d="M7.5 15.5a2.5 2.5 0 005 0" stroke={C.txt3} strokeWidth="1.6" /><circle cx="15" cy="5" r="3" fill="#ff4757" /></svg>),
+  add: () => (<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><line x1="11" y1="4" x2="11" y2="18" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /><line x1="4" y1="11" x2="18" y2="11" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" /></svg>),
+  arrow: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><line x1="2" y1="9" x2="16" y2="9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /><polyline points="10,3 16,9 10,15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>),
+  send: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M15 9L3 3l3 6L3 15l12-6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" fill="none" /></svg>),
+  close: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><line x1="3" y1="3" x2="15" y2="15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /><line x1="15" y1="3" x2="3" y2="15" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg>),
+  spark: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2l1.5 4.5L15 8l-4.5 1.5L9 14l-1.5-4.5L3 8l4.5-1.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" /></svg>),
+  heart: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 15.5s-6-3.5-6-8a3.5 3.5 0 017 0 3.5 3.5 0 017 0c0 4.5-6 8-6 8z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" /></svg>),
+  star: () => (<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 2l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" fill="none" /></svg>),
+  edit: () => (<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M11.5 2.5l2 2L5 13H3v-2L11.5 2.5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>),
+  check: () => (<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="2,8 6,12 14,4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>),
+  chevLeft: () => (<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="10,3 5,8 10,13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>),
+  chevRight: () => (<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><polyline points="6,3 11,8 6,13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>),
+  drop: () => (<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 2C7 2 2 7 2 9.5a5 5 0 0010 0C12 7 7 2 7 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>),
 };
 
 const phaseColors = {
@@ -217,6 +156,459 @@ function getPhase(day) {
   if (day >= 6 && day <= 12) return "follicular";
   if (day >= 13 && day <= 15) return "ovulation";
   return "luteal";
+}
+
+// Format a Date to "YYYY-MM-DD"
+function toDateStr(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/* ─────────────────────────────────────────────
+   DAY LOG POPUP
+───────────────────────────────────────────── */
+function DayLogPopup({ dateStr, uid, onClose, onSaved, existingLog }) {
+  const [tab, setTab] = useState("symptoms"); // symptoms | period
+  const [isPeriodDay, setIsPeriodDay] = useState(existingLog?.isPeriodDay || false);
+  const [mood, setMood] = useState(existingLog?.mood || 7);
+  const [energy, setEnergy] = useState(existingLog?.energy || 7);
+  const [sleep, setSleep] = useState(existingLog?.sleep || 7);
+  const [stress, setStress] = useState(existingLog?.stress || 4);
+  const [selectedSymptoms, setSelectedSymptoms] = useState(existingLog?.symptoms || []);
+  const [notes, setNotes] = useState(existingLog?.notes || "");
+  const [saving, setSaving] = useState(false);
+
+  const displayDate = new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
+  const toggleSymptom = (s) => setSelectedSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
+
+  const handleSave = async () => {
+    if (!uid) { onClose(); return; }
+    setSaving(true);
+    await saveDailyLog(uid, dateStr, {
+      mood: +mood, energy: +energy, sleep: +sleep, stress: +stress,
+      symptoms: selectedSymptoms, notes, isPeriodDay,
+    });
+    setSaving(false);
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(26,10,13,0.55)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 20 }} onClick={onClose}>
+      <div className="glass-card scale-in" style={{ maxWidth: 480, width: "100%", maxHeight: "88vh", overflowY: "auto", padding: 32, background: "rgba(255,255,255,0.98)", position: "relative" }} onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} style={{ position: "absolute", top: 16, right: 16, background: C.bur6, border: "none", borderRadius: "50%", width: 32, height: 32, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.txt2 }}>{Icon.close()}</button>
+
+        <div style={{ marginBottom: 20 }}>
+          <h3 style={{ fontSize: 20, fontWeight: 700, color: C.txt, marginBottom: 4 }}>Log for {displayDate}</h3>
+          <p style={{ fontSize: 13, color: C.txt3 }}>{existingLog ? "Update your entry" : "Add your data for this day"}</p>
+        </div>
+
+        {/* Period toggle prominent at top */}
+        <div onClick={() => setIsPeriodDay(!isPeriodDay)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderRadius: 14, background: isPeriodDay ? `linear-gradient(135deg, ${C.bur}, ${C.bur2})` : C.bur6, marginBottom: 20, cursor: "pointer", transition: "all 0.2s" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🩸</span>
+            <div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: isPeriodDay ? C.bur5 : C.txt, marginBottom: 2 }}>Period day</p>
+              <p style={{ fontSize: 12, color: isPeriodDay ? "rgba(253,242,244,0.75)" : C.txt3 }}>Tap to {isPeriodDay ? "unmark" : "mark"} this day as period</p>
+            </div>
+          </div>
+          <div style={{ width: 28, height: 28, borderRadius: "50%", background: isPeriodDay ? "rgba(255,255,255,0.25)" : C.bur4, display: "flex", alignItems: "center", justifyContent: "center", color: isPeriodDay ? C.bur5 : C.bur }}>
+            {isPeriodDay ? Icon.check() : Icon.drop()}
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+          {["symptoms", "wellbeing"].map(t => (
+            <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: "9px", borderRadius: 10, border: "none", cursor: "pointer", background: tab === t ? C.bur : C.bur6, color: tab === t ? C.bur5 : C.txt2, fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s" }}>
+              {t === "symptoms" ? "Symptoms" : "Wellbeing"}
+            </button>
+          ))}
+        </div>
+
+        {tab === "symptoms" && (
+          <div className="fade-in">
+            <p style={{ fontSize: 13, color: C.txt3, marginBottom: 12 }}>Select any symptoms you experienced</p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+              {symptoms.map(s => (
+                <button key={s} onClick={() => toggleSymptom(s)} className="tag" style={{ background: selectedSymptoms.includes(s) ? C.bur : C.bur6, color: selectedSymptoms.includes(s) ? C.bur5 : C.txt2, border: `1.5px solid ${selectedSymptoms.includes(s) ? C.bur : "rgba(125,31,46,0.15)"}` }}>{s}</button>
+              ))}
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.txt, marginBottom: 8 }}>Notes (optional)</label>
+              <textarea className="input-field" rows={3} placeholder="Anything else to note about this day..." value={notes} onChange={e => setNotes(e.target.value)} style={{ resize: "none" }} />
+            </div>
+          </div>
+        )}
+
+        {tab === "wellbeing" && (
+          <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {[
+              { label: "Mood", key: "mood", val: mood, set: setMood, color: C.bur, low: "😔", high: "😊", max: 10 },
+              { label: "Energy", key: "energy", val: energy, set: setEnergy, color: C.bur3, low: "🔋", high: "⚡", max: 10 },
+              { label: "Sleep (hrs)", key: "sleep", val: sleep, set: setSleep, color: C.bur2, low: "😴", high: "✨", max: 12 },
+              { label: "Stress", key: "stress", val: stress, set: setStress, color: "#ff6b6b", low: "😌", high: "😤", max: 10 },
+            ].map(({ label, val, set, color, low, high, max }) => (
+              <div key={label}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.txt }}>{label}</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color }}>{val}{max === 12 ? " hrs" : "/10"}</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 16 }}>{low}</span>
+                  <input type="range" min="1" max={max} value={val} onChange={e => set(+e.target.value)} style={{ flex: 1, height: 6, accentColor: color, outline: "none" }} />
+                  <span style={{ fontSize: 16 }}>{high}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 24, padding: "14px" }} onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : existingLog ? "Update entry" : "Save entry"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────────────────────────
+   CALENDAR VIEW — full featured
+───────────────────────────────────────────── */
+function CalendarView({ cycleData, uid, onCycleUpdate }) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [editMode, setEditMode] = useState(false);
+  const [selectedPeriodDates, setSelectedPeriodDates] = useState(new Set());
+  const [loggedDays, setLoggedDays] = useState({}); // dateStr -> log data
+  const [periodDays, setPeriodDays] = useState(new Set()); // dateStr -> is period day
+  const [tappedDate, setTappedDate] = useState(null); // dateStr of tapped day
+  const [tappedLog, setTappedLog] = useState(null);
+  const [savingPeriod, setSavingPeriod] = useState(false);
+  const [loadingMonth, setLoadingMonth] = useState(false);
+
+  const monthName = new Date(viewYear, viewMonth, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+  const days = [];
+  for (let i = 0; i < firstDay; i++) days.push(null);
+  for (let i = 1; i <= daysInMonth; i++) days.push(i);
+
+  // Load all logs for the visible month
+  const loadMonthData = async () => {
+    if (!uid) return;
+    setLoadingMonth(true);
+    try {
+      const allLogs = await getAllLogs(uid);
+      const logged = {};
+      const period = new Set();
+      allLogs.forEach(log => {
+        if (!log.date) return;
+        const d = new Date(log.date + "T00:00:00");
+        if (d.getFullYear() === viewYear && d.getMonth() === viewMonth) {
+          logged[log.date] = log;
+          if (log.isPeriodDay) period.add(log.date);
+        }
+      });
+      setLoggedDays(logged);
+      setPeriodDays(period);
+    } catch (e) {
+      console.error(e);
+    }
+    setLoadingMonth(false);
+  };
+
+  useEffect(() => { loadMonthData(); }, [uid, viewYear, viewMonth]);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewYear(y => y - 1); setViewMonth(11); }
+    else setViewMonth(m => m - 1);
+    setEditMode(false);
+    setSelectedPeriodDates(new Set());
+  };
+
+  const nextMonth = () => {
+    const now = new Date();
+    if (viewYear > now.getFullYear() || (viewYear === now.getFullYear() && viewMonth >= now.getMonth())) return;
+    if (viewMonth === 11) { setViewYear(y => y + 1); setViewMonth(0); }
+    else setViewMonth(m => m + 1);
+    setEditMode(false);
+    setSelectedPeriodDates(new Set());
+  };
+
+  const isFutureMonth = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth >= today.getMonth());
+
+  const handleDayTap = async (day) => {
+    if (!day) return;
+    const dateStr = toDateStr(viewYear, viewMonth, day);
+
+    if (editMode) {
+      // Toggle selection
+      setSelectedPeriodDates(prev => {
+        const next = new Set(prev);
+        if (next.has(dateStr)) next.delete(dateStr);
+        else next.add(dateStr);
+        return next;
+      });
+      return;
+    }
+
+    // Normal mode: open day log popup
+    const existing = loggedDays[dateStr] || null;
+    setTappedLog(existing);
+    setTappedDate(dateStr);
+  };
+
+  const handleEnterEditMode = () => {
+    // Pre-select already marked period days in this month
+    setSelectedPeriodDates(new Set(periodDays));
+    setEditMode(true);
+  };
+
+  const handleSavePeriodDates = async () => {
+    if (!uid) return;
+    setSavingPeriod(true);
+
+    // For each day in the month, update isPeriodDay
+    const allDatesInMonth = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      allDatesInMonth.push(toDateStr(viewYear, viewMonth, d));
+    }
+
+    for (const dateStr of allDatesInMonth) {
+      const shouldBePeriod = selectedPeriodDates.has(dateStr);
+      const wasPeriod = periodDays.has(dateStr);
+      const existingLog = loggedDays[dateStr];
+
+      // Only write if something changed or we need to mark/unmark
+      if (shouldBePeriod !== wasPeriod || shouldBePeriod) {
+        await saveDailyLog(uid, dateStr, {
+          ...(existingLog || {}),
+          isPeriodDay: shouldBePeriod,
+        });
+      }
+    }
+
+    // Derive best lastPeriodDate from selected dates
+    if (selectedPeriodDates.size > 0) {
+      const sorted = Array.from(selectedPeriodDates).sort();
+      const earliest = sorted[0];
+      const settings = await getCycleSettings(uid);
+      await saveCycleSettings(uid, {
+        ...(settings || {}),
+        lastPeriodDate: earliest,
+        cycleLength: settings?.cycleLength || 28,
+        periodDuration: settings?.periodDuration || 5,
+      });
+    }
+
+    setSavingPeriod(false);
+    setEditMode(false);
+    setSelectedPeriodDates(new Set());
+    await loadMonthData();
+    if (onCycleUpdate) onCycleUpdate();
+  };
+
+  const getCellPhase = (day) => {
+    if (!day || !cycleData?.lastPeriodDate) return null;
+    const lastPeriod = new Date(cycleData.lastPeriodDate);
+    const cellDate = new Date(viewYear, viewMonth, day);
+    const diffDays = Math.floor((cellDate - lastPeriod) / (1000 * 60 * 60 * 24));
+    const cycleLen = cycleData?.cycleLength || 28;
+    const cycleDay = ((diffDays % cycleLen) + cycleLen) % cycleLen + 1;
+    return getPhaseFromDay(cycleDay, cycleLen);
+  };
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      {/* Header */}
+      <div className="fade-in" style={{ marginBottom: 24, display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 4 }}>Cycle Calendar</h1>
+          <p style={{ fontSize: 15, color: C.txt2 }}>Tap any date to log · Navigate to past months</p>
+        </div>
+        {!editMode ? (
+          <button onClick={handleEnterEditMode} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 18px", borderRadius: 12, background: C.bur6, color: C.bur, border: `1.5px solid rgba(125,31,46,0.2)`, cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+            {Icon.edit()} Edit Period Dates
+          </button>
+        ) : (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={() => { setEditMode(false); setSelectedPeriodDates(new Set()); }} style={{ padding: "10px 16px", borderRadius: 12, background: C.bur6, color: C.txt2, border: "none", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: "'DM Sans', sans-serif" }}>
+              Cancel
+            </button>
+            <button onClick={handleSavePeriodDates} disabled={savingPeriod} className="btn-primary" style={{ padding: "10px 18px", fontSize: 13 }}>
+              {savingPeriod ? "Saving..." : `Save ${selectedPeriodDates.size} day${selectedPeriodDates.size !== 1 ? "s" : ""}`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Edit mode banner */}
+      {editMode && (
+        <div className="fade-in" style={{ padding: "14px 18px", borderRadius: 14, background: `linear-gradient(135deg, rgba(125,31,46,0.08), rgba(196,96,122,0.08))`, border: `1.5px dashed rgba(125,31,46,0.3)`, marginBottom: 20, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 20 }}>🩸</span>
+          <div>
+            <p style={{ fontSize: 13, fontWeight: 600, color: C.bur, marginBottom: 2 }}>Period date selection mode</p>
+            <p style={{ fontSize: 12, color: C.txt3 }}>Tap dates to mark or unmark them as period days. Changes help improve your predictions.</p>
+          </div>
+        </div>
+      )}
+
+      {/* Phase legend */}
+      {!editMode && (
+        <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
+          {Object.entries(phaseColors).filter(([k]) => k !== "unknown").map(([key, val]) => (
+            <div key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 12, height: 12, borderRadius: "50%", background: val.bg, border: `2px solid ${val.text}` }} />
+              <span style={{ fontSize: 12, color: C.txt2, fontWeight: 500 }}>{val.label}</span>
+            </div>
+          ))}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 12, height: 12, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})` }} />
+            <span style={{ fontSize: 12, color: C.txt2, fontWeight: 500 }}>Period logged</span>
+          </div>
+        </div>
+      )}
+
+      <div className="glass-card slide-up" style={{ padding: 28 }}>
+        {/* Month navigation */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <button onClick={prevMonth} style={{ width: 38, height: 38, borderRadius: 10, background: C.bur6, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.bur }}>
+            {Icon.chevLeft()}
+          </button>
+          <div style={{ textAlign: "center" }}>
+            <h2 className="serif" style={{ fontSize: 22, color: C.txt }}>{monthName}</h2>
+            {loadingMonth && <p style={{ fontSize: 11, color: C.txt3, marginTop: 2 }}>Loading...</p>}
+          </div>
+          <button onClick={nextMonth} disabled={isFutureMonth} style={{ width: 38, height: 38, borderRadius: 10, background: isFutureMonth ? "rgba(125,31,46,0.05)" : C.bur6, border: "none", cursor: isFutureMonth ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: isFutureMonth ? C.txt3 : C.bur, opacity: isFutureMonth ? 0.4 : 1 }}>
+            {Icon.chevRight()}
+          </button>
+        </div>
+
+        {/* Day headers */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 8 }}>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
+            <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 700, color: C.txt3, padding: "4px 0", textTransform: "uppercase", letterSpacing: "0.3px" }}>{d}</div>
+          ))}
+        </div>
+
+        {/* Calendar grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+          {days.map((day, i) => {
+            if (!day) return <div key={i} style={{ aspectRatio: "1" }} />;
+
+            const dateStr = toDateStr(viewYear, viewMonth, day);
+            const isToday = day === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
+            const isPeriod = periodDays.has(dateStr);
+            const isSelected = selectedPeriodDates.has(dateStr);
+            const hasLog = !!loggedDays[dateStr];
+            const phase = getCellPhase(day);
+            const pc = phase ? phaseColors[phase] : null;
+
+            let bg = pc?.bg || "#fff";
+            let color = pc?.text || C.txt2;
+            let border = `1px solid rgba(125,31,46,0.08)`;
+
+            if (isPeriod && !editMode) {
+              bg = `linear-gradient(135deg, ${C.bur}, ${C.bur2})`;
+              color = "#fff";
+              border = "none";
+            }
+            if (isToday && !editMode && !isPeriod) {
+              border = `3px solid ${C.bur}`;
+              color = C.bur;
+            }
+            if (isToday && !editMode && !isPeriod) bg = "#fff";
+
+            if (editMode && isSelected) {
+              bg = `linear-gradient(135deg, ${C.bur}, ${C.bur2})`;
+              color = "#fff";
+              border = "none";
+            }
+
+            return (
+              <div
+                key={i}
+                className="cal-day"
+                onClick={() => handleDayTap(day)}
+                style={{
+                  aspectRatio: "1",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  background: bg,
+                  border,
+                  color,
+                  fontSize: 14,
+                  fontWeight: isToday ? 700 : 500,
+                  cursor: "pointer",
+                  position: "relative",
+                  userSelect: "none",
+                }}
+              >
+                <span>{day}</span>
+                {/* Dot indicators */}
+                {!editMode && (
+                  <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
+                    {hasLog && !isPeriod && <div style={{ width: 4, height: 4, borderRadius: "50%", background: C.bur3 }} />}
+                    {isPeriod && <div style={{ width: 4, height: 4, borderRadius: "50%", background: "rgba(255,255,255,0.7)" }} />}
+                  </div>
+                )}
+                {editMode && isSelected && (
+                  <div style={{ position: "absolute", top: 3, right: 3, width: 14, height: 14, borderRadius: "50%", background: "rgba(255,255,255,0.3)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    {Icon.check()}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Legend for current month */}
+        {!editMode && (periodDays.size > 0 || Object.keys(loggedDays).length > 0) && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: `1px solid rgba(125,31,46,0.08)`, display: "flex", gap: 16, flexWrap: "wrap" }}>
+            {periodDays.size > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 12, height: 12, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})` }} />
+                <span style={{ fontSize: 12, color: C.txt3 }}>{periodDays.size} period day{periodDays.size !== 1 ? "s" : ""} logged</span>
+              </div>
+            )}
+            {Object.keys(loggedDays).length > 0 && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 8, height: 8, borderRadius: "50%", background: C.bur3 }} />
+                <span style={{ fontSize: 12, color: C.txt3 }}>{Object.keys(loggedDays).length} day{Object.keys(loggedDays).length !== 1 ? "s" : ""} with entries</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Tip */}
+      <div style={{ marginTop: 16, padding: "12px 16px", borderRadius: 12, background: C.bur6, display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <span style={{ fontSize: 16, flexShrink: 0 }}>💡</span>
+        <p style={{ fontSize: 12, color: C.txt2, lineHeight: 1.6 }}>
+          {editMode
+            ? "Select all the days your period was active, then tap Save. You can go back to previous months to add historical data too."
+            : "Tap any date to log symptoms, mood, sleep and more. Use \"Edit Period Dates\" to mark multiple days at once."}
+        </p>
+      </div>
+
+      {/* Day log popup */}
+      {tappedDate && (
+        <DayLogPopup
+          dateStr={tappedDate}
+          uid={uid}
+          existingLog={tappedLog}
+          onClose={() => { setTappedDate(null); setTappedLog(null); }}
+          onSaved={() => { loadMonthData(); if (onCycleUpdate) onCycleUpdate(); }}
+        />
+      )}
+    </div>
+  );
 }
 
 /* ─────────────────────────────────────────────
@@ -236,12 +628,10 @@ function LandingPage({ onGetStarted, onLogin }) {
     { name: "Ananya S.", text: "The AI assistant answered questions I was too embarrassed to Google. Life-changing.", rating: 5 },
     { name: "Divya K.", text: "I've tried Flo and Clue — TrackHER feels more personal and less clinical.", rating: 5 },
   ];
-
   return (
     <div style={{ fontFamily: "'DM Sans', sans-serif", color: C.txt, overflowX: "hidden", background: C.bur5 }}>
       <div className="floating-orb" style={{ width: 400, height: 400, background: `radial-gradient(circle, ${C.bur4}, transparent)`, top: -100, right: -100 }} />
       <div className="floating-orb" style={{ width: 300, height: 300, background: `radial-gradient(circle, ${C.bur3}, transparent)`, bottom: 100, left: -50, animationDelay: '2s' }} />
-
       <nav className="glass-card" style={{ padding: "16px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", position: "sticky", top: 0, zIndex: 100, borderRadius: 0 }}>
         <span className="serif gradient-text" style={{ fontSize: 26, fontWeight: 600, letterSpacing: "-0.8px" }}>TrackHER</span>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
@@ -249,7 +639,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           <button className="btn-primary" style={{ padding: "10px 22px", fontSize: 13 }} onClick={onGetStarted}>Get started free</button>
         </div>
       </nav>
-
       <section style={{ padding: "100px 40px 120px", textAlign: "center", position: "relative" }}>
         <div style={{ maxWidth: 720, margin: "0 auto", position: "relative", zIndex: 1 }}>
           <div className="fade-in" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "linear-gradient(135deg, rgba(125,31,46,0.1), rgba(196,96,122,0.1))", color: C.bur, padding: "8px 20px", borderRadius: 24, fontSize: 13, fontWeight: 600, marginBottom: 32, border: `1.5px solid rgba(125,31,46,0.15)` }}>
@@ -265,7 +654,6 @@ function LandingPage({ onGetStarted, onLogin }) {
             <button className="btn-primary" style={{ fontSize: 16, padding: "16px 32px" }} onClick={onGetStarted}>Start tracking free {Icon.arrow()}</button>
             <button className="btn-secondary" style={{ fontSize: 16, padding: "15px 28px" }} onClick={onLogin}>I already have an account</button>
           </div>
-
           <div className="slide-up" style={{ marginTop: 72, display: "flex", justifyContent: "center", gap: 20, perspective: 1200 }}>
             <div className="glass-card" style={{ width: 280, background: "rgba(255,255,255,0.95)", borderRadius: 32, border: `6px solid ${C.txt}`, overflow: "hidden", boxShadow: "0 40px 80px rgba(125,31,46,0.25)", transform: "rotateY(-7deg) rotateX(3deg)", flexShrink: 0 }}>
               <div style={{ background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, padding: "10px 16px 0" }}>
@@ -311,7 +699,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           </div>
         </div>
       </section>
-
       <section style={{ padding: "100px 40px", background: "#fff" }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <div style={{ textAlign: "center", marginBottom: 72 }}>
@@ -330,7 +717,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           </div>
         </div>
       </section>
-
       <section style={{ padding: "100px 40px", background: C.bur5 }}>
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
           <div style={{ display: "inline-block", background: `linear-gradient(135deg, ${C.bur4}, ${C.bur6})`, color: C.bur, padding: "6px 16px", borderRadius: 20, fontSize: 12, fontWeight: 700, marginBottom: 20, textTransform: "uppercase", letterSpacing: "1px" }}>Testimonials</div>
@@ -349,7 +735,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           </div>
         </div>
       </section>
-
       <section style={{ padding: "100px 40px 120px", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, textAlign: "center", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.08) 0%, transparent 70%)" }} />
         <div style={{ maxWidth: 640, margin: "0 auto", position: "relative", zIndex: 1 }}>
@@ -359,7 +744,6 @@ function LandingPage({ onGetStarted, onLogin }) {
           <p style={{ fontSize: 13, color: "rgba(253,242,244,0.6)", marginTop: 20 }}>No credit card required. Forever free.</p>
         </div>
       </section>
-
       <footer style={{ background: "#fff", borderTop: `1px solid rgba(125,31,46,0.1)`, padding: "40px 40px", textAlign: "center" }}>
         <span className="serif gradient-text" style={{ fontSize: 24, fontWeight: 600, letterSpacing: "-0.5px" }}>TrackHER</span>
         <p style={{ fontSize: 13, color: C.txt3, marginTop: 12 }}>Made with care for people who menstruate</p>
@@ -429,11 +813,7 @@ function AuthModal({ mode, onClose, onSuccess }) {
           <h2 style={{ fontSize: 24, fontWeight: 600, color: C.txt, marginTop: 16, marginBottom: 8 }}>{formMode === "signup" ? "Create your account" : "Welcome back"}</h2>
           <p style={{ fontSize: 14, color: C.txt2 }}>{formMode === "signup" ? "Start your cycle tracking journey" : "Sign in to continue"}</p>
         </div>
-
-        {error && (
-          <div style={{ background: "#fff0f2", border: `1.5px solid ${C.bur4}`, borderRadius: 12, padding: 12, marginBottom: 20, fontSize: 13, color: C.bur, fontWeight: 500 }}>⚠️ {error}</div>
-        )}
-
+        {error && <div style={{ background: "#fff0f2", border: `1.5px solid ${C.bur4}`, borderRadius: 12, padding: 12, marginBottom: 20, fontSize: 13, color: C.bur, fontWeight: 500 }}>⚠️ {error}</div>}
         <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {formMode === "signup" && (
             <div>
@@ -453,13 +833,11 @@ function AuthModal({ mode, onClose, onSuccess }) {
             {loading ? "Please wait..." : formMode === "signup" ? "Create account" : "Sign in"}
           </button>
         </form>
-
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "24px 0" }}>
           <div style={{ flex: 1, height: 1, background: "rgba(125,31,46,0.15)" }} />
           <span style={{ fontSize: 12, color: C.txt3, fontWeight: 500 }}>OR</span>
           <div style={{ flex: 1, height: 1, background: "rgba(125,31,46,0.15)" }} />
         </div>
-
         <button onClick={handleGoogle} className="btn-secondary" style={{ width: "100%", padding: "13px", fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }} disabled={loading}>
           <svg width="18" height="18" viewBox="0 0 18 18">
             <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
@@ -469,7 +847,6 @@ function AuthModal({ mode, onClose, onSuccess }) {
           </svg>
           Continue with Google
         </button>
-
         <p style={{ textAlign: "center", fontSize: 13, color: C.txt2, marginTop: 24 }}>
           {formMode === "signup" ? "Already have an account? " : "Don't have an account? "}
           <button onClick={() => { setFormMode(formMode === "signup" ? "signin" : "signup"); setError(""); }} style={{ background: "none", border: "none", color: C.bur, fontWeight: 600, cursor: "pointer", textDecoration: "underline" }}>
@@ -492,19 +869,46 @@ function Dashboard() {
   const [loadingCycle, setLoadingCycle] = useState(true);
 
   const loadCycleData = async () => {
-    if (!user?.uid) return;
-    const settings = await getCycleSettings(user.uid);
-    if (settings) {
-      const cycleDay = getCycleDay(settings.lastPeriodDate, settings.cycleLength);
-      const nextPeriod = getNextPeriodDate(settings.lastPeriodDate, settings.cycleLength);
-      const pmsRisk = getPMSRisk(cycleDay, settings.cycleLength);
-      const phase = getPhaseFromDay(cycleDay, settings.cycleLength);
-      const phaseInfo = getPhaseInfo(phase);
-      const daysUntil = getDaysUntilNextPeriod(settings.lastPeriodDate, settings.cycleLength);
-      setCycleData({ cycleDay, nextPeriod: formatDate(nextPeriod), pmsRisk, phase, phaseInfo, daysUntil, cycleLength: settings.cycleLength || 28, lastPeriodDate: settings.lastPeriodDate });
+  if (!user?.uid) return;
+
+  // First try smart prediction from all logged period data
+  let settings = await getCycleSettings(user.uid);
+  try {
+    const allLogs = await getAllLogsAllTime(user.uid);
+    const smart = calculateSmartCycleLength(allLogs);
+    if (smart) {
+      // Auto-update cycle settings with smarter values
+      await saveCycleSettings(user.uid, {
+        lastPeriodDate: smart.lastPeriodDate,
+        cycleLength: smart.cycleLength,
+        periodDuration: smart.periodDuration,
+        smartPrediction: true,
+        cyclesAnalysed: smart.cyclesAnalysed,
+        confidence: smart.confidence,
+      });
+      settings = { ...settings, ...smart };
     }
-    setLoadingCycle(false);
-  };
+  } catch (e) {
+    // Smart prediction failed, fall back to manual settings
+  }
+
+  if (settings) {
+    const cycleDay = getCycleDay(settings.lastPeriodDate, settings.cycleLength);
+    const nextPeriod = getNextPeriodDate(settings.lastPeriodDate, settings.cycleLength);
+    const pmsRisk = getPMSRisk(cycleDay, settings.cycleLength);
+    const phase = getPhaseFromDay(cycleDay, settings.cycleLength);
+    const phaseInfo = getPhaseInfo(phase);
+    const daysUntil = getDaysUntilNextPeriod(settings.lastPeriodDate, settings.cycleLength);
+    setCycleData({
+      cycleDay, nextPeriod: formatDate(nextPeriod), pmsRisk, phase, phaseInfo, daysUntil,
+      cycleLength: settings.cycleLength || 28,
+      lastPeriodDate: settings.lastPeriodDate,
+      confidence: settings.confidence || null,
+      cyclesAnalysed: settings.cyclesAnalysed || null,
+    });
+  }
+  setLoadingCycle(false);
+};
 
   useEffect(() => { loadCycleData(); }, [user]);
 
@@ -538,7 +942,7 @@ function Dashboard() {
 
       <main style={{ flex: 1, overflowY: "auto", padding: 32 }}>
         {view === "home"     && <HomeView cycleDay={cycleDay} phase={phase} phaseInfo={phaseInfo} nextPeriod={nextPeriod} pmsRisk={pmsRisk} daysUntil={cycleData?.daysUntil} hasData={!!cycleData} loadingCycle={loadingCycle} user={user} cycleData={cycleData} onLogClick={() => setShowLogModal(true)} />}
-        {view === "calendar" && <CalendarView cycleData={cycleData} />}
+        {view === "calendar" && <CalendarView cycleData={cycleData} uid={user?.uid} onCycleUpdate={loadCycleData} />}
         {view === "trends"   && <TrendsView uid={user?.uid} />}
         {view === "insights" && <InsightsView cycleData={cycleData} />}
         {view === "chat"     && <ChatView user={user} cycleData={cycleData} />}
@@ -563,10 +967,8 @@ function Dashboard() {
 ───────────────────────────────────────────── */
 function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, hasData, loadingCycle, user, cycleData, onLogClick }) {
   const userName = user?.displayName || user?.email?.split("@")[0] || "there";
-
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto" }}>
-
       {!loadingCycle && !hasData && (
         <div className="glass-card fade-in" style={{ padding: 32, marginBottom: 28, background: `linear-gradient(135deg, rgba(125,31,46,0.06), rgba(196,96,122,0.06))`, border: `2px dashed rgba(125,31,46,0.2)`, textAlign: "center" }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>🌸</div>
@@ -575,12 +977,10 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           <button className="btn-primary" onClick={onLogClick}>{Icon.add()} Log your first period</button>
         </div>
       )}
-
       <div className="fade-in" style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Welcome back, {userName} 👋</h1>
         <p style={{ fontSize: 15, color: C.txt2 }}>Here's your cycle overview for today</p>
       </div>
-
       <div className="glass-card slide-up" style={{ padding: 40, marginBottom: 24, background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.15), transparent 60%)" }} />
         <div style={{ position: "relative", zIndex: 1 }}>
@@ -600,7 +1000,6 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           </div>
         </div>
       </div>
-
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginBottom: 32 }}>
         <div className="glass-card scale-in" style={{ padding: 28 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
@@ -610,7 +1009,6 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           <div className="serif" style={{ fontSize: 36, fontWeight: 600, color: C.bur, marginBottom: 6 }}>{nextPeriod}</div>
           <p style={{ fontSize: 13, color: C.txt2 }}>{daysUntil ? `In ${daysUntil} days` : "Log your period to predict"}</p>
         </div>
-
         <div className="glass-card scale-in" style={{ padding: 28, animationDelay: "0.1s" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "1px" }}>PMS Risk</span>
@@ -621,7 +1019,6 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
             <div style={{ width: `${pmsRisk}%`, height: "100%", background: "linear-gradient(90deg, #ff6b6b, #ff8e8e)", borderRadius: 4, transition: "width 0.5s" }} />
           </div>
         </div>
-
         <div className="glass-card scale-in" style={{ padding: 28, animationDelay: "0.2s" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: C.txt3, textTransform: "uppercase", letterSpacing: "1px" }}>Current Phase</span>
@@ -631,7 +1028,6 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           <p style={{ fontSize: 13, color: C.txt2 }}>{hasData ? `Day ${cycleDay} of your cycle` : "Log a period to see your phase"}</p>
         </div>
       </div>
-
       <div className="glass-card slide-up" style={{ padding: 32, marginBottom: 24 }}>
         <h3 style={{ fontSize: 20, fontWeight: 700, color: C.txt, marginBottom: 20 }}>Weekly Wellness Trends</h3>
         <ResponsiveContainer width="100%" height={280}>
@@ -650,7 +1046,6 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           </AreaChart>
         </ResponsiveContainer>
       </div>
-
       <div className="glass-card slide-up" style={{ padding: 32, background: `linear-gradient(135deg, rgba(125,31,46,0.05), rgba(196,96,122,0.05))` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 12, background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", color: C.bur5 }}>{Icon.spark()}</div>
@@ -660,73 +1055,8 @@ function HomeView({ cycleDay, phase, phaseInfo, nextPeriod, pmsRisk, daysUntil, 
           </div>
         </div>
         <p style={{ fontSize: 15, color: C.txt2, lineHeight: 1.7 }}>
-          {hasData
-            ? `You're in your ${phaseInfo?.label} phase — ${phaseInfo?.tip || "keep tracking for more insights."} You're on day ${cycleDay} of your cycle.`
-            : "Log your last period date to start receiving personalised cycle insights tailored to your unique pattern."}
+          {hasData ? `You're in your ${phaseInfo?.label} phase — ${phaseInfo?.tip || "keep tracking for more insights."} You're on day ${cycleDay} of your cycle.` : "Log your last period date to start receiving personalised cycle insights tailored to your unique pattern."}
         </p>
-      </div>
-    </div>
-  );
-}
-
-/* ─────────────────────────────────────────────
-   CALENDAR VIEW
-───────────────────────────────────────────── */
-function CalendarView({ cycleData }) {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = today.getMonth();
-  const monthName = today.toLocaleDateString("en-US", { month: "long", year: "numeric" });
-  const firstDay = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const days = [];
-  for (let i = 0; i < firstDay; i++) days.push(null);
-  for (let i = 1; i <= daysInMonth; i++) days.push(i);
-
-  const getCellPhase = (day) => {
-    if (!day || !cycleData?.lastPeriodDate) return null;
-    const lastPeriod = new Date(cycleData.lastPeriodDate);
-    const cellDate = new Date(year, month, day);
-    const diffDays = Math.floor((cellDate - lastPeriod) / (1000 * 60 * 60 * 24));
-    const cycleLen = cycleData.cycleLength || 28;
-    const cycleDay = ((diffDays % cycleLen) + cycleLen) % cycleLen + 1;
-    return getPhaseFromDay(cycleDay, cycleLen);
-  };
-
-  return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
-      <div className="fade-in" style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Cycle Calendar</h1>
-        <p style={{ fontSize: 15, color: C.txt2 }}>{monthName}</p>
-      </div>
-      <div className="glass-card slide-up" style={{ padding: 32 }}>
-        <div style={{ display: "flex", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
-          {Object.entries(phaseColors).filter(([k]) => k !== "unknown").map(([key, val]) => (
-            <div key={key} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 16, height: 16, borderRadius: "50%", background: val.bg, border: `2px solid ${val.text}` }} />
-              <span style={{ fontSize: 13, color: C.txt2, fontWeight: 500 }}>{val.label}</span>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8, marginBottom: 12 }}>
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(d => (
-            <div key={d} style={{ textAlign: "center", fontSize: 12, fontWeight: 700, color: C.txt3, padding: 12 }}>{d}</div>
-          ))}
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 8 }}>
-          {days.map((day, i) => {
-            const p = getCellPhase(day);
-            const pc = p ? phaseColors[p] : null;
-            const isToday = day === today.getDate();
-            return (
-              <div key={i} className="scale-in" style={{ aspectRatio: "1", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 14, background: day ? (isToday ? C.bur : pc?.bg || "#fff") : "transparent", border: isToday ? `3px solid ${C.bur}` : `1px solid ${day ? "rgba(125,31,46,0.1)" : "transparent"}`, fontSize: 15, fontWeight: isToday ? 700 : 500, color: isToday ? "#fff" : (pc?.text || C.txt2), cursor: day ? "pointer" : "default", transition: "all 0.2s", animationDelay: `${i * 0.01}s` }}
-                onMouseEnter={e => day && (e.currentTarget.style.transform = "scale(1.05)")}
-                onMouseLeave={e => day && (e.currentTarget.style.transform = "scale(1)")}>
-                {day}
-              </div>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
@@ -737,88 +1067,243 @@ function CalendarView({ cycleData }) {
 ───────────────────────────────────────────── */
 function TrendsView({ uid }) {
   const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("week");
 
   useEffect(() => {
     const load = async () => {
       if (!uid) return;
       const allLogs = await getAllLogs(uid);
-      if (allLogs.length > 0) {
-        const formatted = allLogs.slice(0, 7).reverse().map(log => ({
-          day: new Date(log.date).toLocaleDateString("en-US", { weekday: "short" }),
-          mood: log.mood || 0, sleep: log.sleep || 0,
-          stress: log.stress || 0, energy: log.energy || 0,
-        }));
-        setLogs(formatted);
-      }
+      setLogs(allLogs.reverse()); // oldest first
+      setLoading(false);
     };
     load();
   }, [uid]);
 
-  const chartData = logs.length > 0 ? logs : trendData;
+  // Last 7 days of logs for week view
+  const weekLogs = logs.slice(-7).map(log => ({
+    day: new Date(log.date + "T00:00:00").toLocaleDateString("en-US", { weekday: "short" }),
+    date: log.date,
+    mood: log.mood || 0,
+    sleep: log.sleep || 0,
+    stress: log.stress || 0,
+    energy: log.energy || 0,
+  }));
+
+  const hasRealData = weekLogs.length > 0;
+  const chartData = hasRealData ? weekLogs : trendData;
+
+  // Compute averages
+  const avg = (key) => {
+    const valid = chartData.filter(d => d[key] > 0);
+    if (!valid.length) return 0;
+    return (valid.reduce((a, d) => a + d[key], 0) / valid.length).toFixed(1);
+  };
+
+  // Symptom frequency from all logs
+  const symptomFreq = {};
+  logs.forEach(log => {
+    (log.symptoms || []).forEach(s => {
+      symptomFreq[s] = (symptomFreq[s] || 0) + 1;
+    });
+  });
+  const topSymptoms = Object.entries(symptomFreq)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  const totalDaysLogged = logs.length;
+  const periodDaysLogged = logs.filter(l => l.isPeriodDay).length;
+
+  const statCards = [
+    { label: "Avg Mood", value: avg("mood"), suffix: "/10", color: C.bur, icon: "😊", desc: avg("mood") >= 7 ? "You're generally positive" : avg("mood") >= 5 ? "Moderate mood overall" : "Lower mood — consider self-care" },
+    { label: "Avg Sleep", value: avg("sleep"), suffix: " hrs", color: "#845ef7", icon: "😴", desc: avg("sleep") >= 7 ? "Great sleep habits!" : avg("sleep") >= 6 ? "Slightly under optimal" : "Low sleep may affect your cycle" },
+    { label: "Avg Energy", value: avg("energy"), suffix: "/10", color: C.bur3, icon: "⚡", desc: avg("energy") >= 7 ? "High energy this week" : "Energy tends to dip in luteal phase" },
+    { label: "Avg Stress", value: avg("stress"), suffix: "/10", color: "#ff6b6b", icon: "🧘", desc: avg("stress") <= 4 ? "Stress is well managed" : avg("stress") <= 6 ? "Moderate stress levels" : "High stress can affect your cycle" },
+  ];
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-      <div className="fade-in" style={{ marginBottom: 32 }}>
-        <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Wellness Trends</h1>
-        <p style={{ fontSize: 15, color: C.txt2 }}>{logs.length > 0 ? "Based on your logged data" : "Log daily to see your real trends"}</p>
+    <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+      <div className="fade-in" style={{ marginBottom: 28 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Your Wellness Story</h1>
+        <p style={{ fontSize: 15, color: C.txt2 }}>
+          {hasRealData
+            ? `Based on ${totalDaysLogged} logged day${totalDaysLogged !== 1 ? "s" : ""}`
+            : "Log daily to see your personal trends"}
+        </p>
       </div>
-      <div style={{ display: "grid", gap: 24 }}>
-        <div className="glass-card slide-up" style={{ padding: 32 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 20 }}>Mood & Energy</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(125,31,46,0.1)" />
-              <XAxis dataKey="day" stroke={C.txt3} style={{ fontSize: 12, fontWeight: 600 }} />
-              <YAxis stroke={C.txt3} style={{ fontSize: 12, fontWeight: 600 }} />
-              <Tooltip contentStyle={{ background: "rgba(255,255,255,0.95)", border: "none", borderRadius: 12, boxShadow: "0 8px 24px rgba(125,31,46,0.15)" }} />
-              <Line type="monotone" dataKey="mood" stroke={C.bur} strokeWidth={3} dot={{ fill: C.bur, r: 5 }} activeDot={{ r: 7 }} />
-              <Line type="monotone" dataKey="energy" stroke={C.bur3} strokeWidth={3} dot={{ fill: C.bur3, r: 5 }} />
-            </LineChart>
-          </ResponsiveContainer>
+
+      {/* Summary stat cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
+        {statCards.map((s, i) => (
+          <div key={i} className="glass-card scale-in" style={{ padding: 22, animationDelay: `${i * 0.08}s` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <span style={{ fontSize: 22 }}>{s.icon}</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: C.txt3, textTransform: "uppercase", letterSpacing: "0.5px" }}>{s.label}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 3, marginBottom: 8 }}>
+              <span className="serif" style={{ fontSize: 32, fontWeight: 600, color: s.color }}>{hasRealData ? s.value : "—"}</span>
+              {hasRealData && <span style={{ fontSize: 13, color: C.txt3 }}>{s.suffix}</span>}
+            </div>
+            <p style={{ fontSize: 12, color: C.txt3, lineHeight: 1.5 }}>{hasRealData ? s.desc : "Log data to see your average"}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Chart section */}
+      <div className="glass-card slide-up" style={{ padding: 28, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 4 }}>How you've been feeling</h3>
+            <p style={{ fontSize: 13, color: C.txt3 }}>{hasRealData ? "Your logged mood and energy" : "Sample data — start logging to see yours"}</p>
+          </div>
+          {!hasRealData && (
+            <div style={{ padding: "6px 12px", borderRadius: 20, background: C.bur6, fontSize: 12, color: C.bur, fontWeight: 600 }}>Sample preview</div>
+          )}
         </div>
-        <div className="glass-card slide-up" style={{ padding: 32 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 20 }}>Sleep & Stress</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(125,31,46,0.1)" />
-              <XAxis dataKey="day" stroke={C.txt3} style={{ fontSize: 12, fontWeight: 600 }} />
-              <YAxis stroke={C.txt3} style={{ fontSize: 12, fontWeight: 600 }} />
-              <Tooltip contentStyle={{ background: "rgba(255,255,255,0.95)", border: "none", borderRadius: 12, boxShadow: "0 8px 24px rgba(125,31,46,0.15)" }} />
-              <Bar dataKey="sleep" fill={C.bur} radius={[8, 8, 0, 0]} />
-              <Bar dataKey="stress" fill="#ff6b6b" radius={[8, 8, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="glass-card slide-up" style={{ padding: 32 }}>
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 20 }}>Wellness Balance</h3>
-          <ResponsiveContainer width="100%" height={350}>
-            <RadarChart data={wellnessData}>
-              <PolarGrid stroke="rgba(125,31,46,0.2)" />
-              <PolarAngleAxis dataKey="category" style={{ fontSize: 13, fontWeight: 600, fill: C.txt2 }} />
-              <PolarRadiusAxis angle={90} domain={[0, 10]} style={{ fontSize: 11, fill: C.txt3 }} />
-              <Radar name="Your Score" dataKey="value" stroke={C.bur} fill={C.bur} fillOpacity={0.4} strokeWidth={3} />
-            </RadarChart>
-          </ResponsiveContainer>
+
+        <ResponsiveContainer width="100%" height={220}>
+          <AreaChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }}>
+            <defs>
+              <linearGradient id="moodFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={C.bur} stopOpacity={0.25}/>
+                <stop offset="95%" stopColor={C.bur} stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id="energyFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={C.bur3} stopOpacity={0.2}/>
+                <stop offset="95%" stopColor={C.bur3} stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(125,31,46,0.07)" />
+            <XAxis dataKey="day" stroke={C.txt3} tick={{ fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+            <YAxis domain={[0, 10]} stroke={C.txt3} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <Tooltip
+              contentStyle={{ background: "rgba(255,255,255,0.96)", border: "none", borderRadius: 14, boxShadow: "0 8px 24px rgba(125,31,46,0.15)", padding: "12px 16px" }}
+              formatter={(value, name) => [`${value}/10`, name === "mood" ? "Mood" : "Energy"]}
+            />
+            <Area type="monotone" dataKey="mood" stroke={C.bur} strokeWidth={2.5} fill="url(#moodFill)" dot={{ fill: C.bur, r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
+            <Area type="monotone" dataKey="energy" stroke={C.bur3} strokeWidth={2.5} fill="url(#energyFill)" dot={{ fill: C.bur3, r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
+          </AreaChart>
+        </ResponsiveContainer>
+
+        <div style={{ display: "flex", gap: 20, justifyContent: "center", marginTop: 12 }}>
+          {[["Mood", C.bur], ["Energy", C.bur3]].map(([label, color]) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 24, height: 3, background: color, borderRadius: 2 }} />
+              <span style={{ fontSize: 12, color: C.txt3, fontWeight: 500 }}>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
+
+      {/* Sleep vs Stress */}
+      <div className="glass-card slide-up" style={{ padding: 28, marginBottom: 24 }}>
+        <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 4 }}>Sleep & Stress patterns</h3>
+        <p style={{ fontSize: 13, color: C.txt3, marginBottom: 20 }}>High stress often means less sleep — and both affect your cycle</p>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={chartData} margin={{ top: 5, right: 5, left: -15, bottom: 0 }} barGap={4}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(125,31,46,0.07)" />
+            <XAxis dataKey="day" stroke={C.txt3} tick={{ fontSize: 12, fontWeight: 600 }} axisLine={false} tickLine={false} />
+            <YAxis stroke={C.txt3} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <Tooltip
+              contentStyle={{ background: "rgba(255,255,255,0.96)", border: "none", borderRadius: 14, boxShadow: "0 8px 24px rgba(125,31,46,0.15)", padding: "12px 16px" }}
+              formatter={(value, name) => [name === "sleep" ? `${value} hrs` : `${value}/10`, name === "sleep" ? "Sleep" : "Stress"]}
+            />
+            <Bar dataKey="sleep" fill={C.bur2} radius={[6, 6, 0, 0]} maxBarSize={40} />
+            <Bar dataKey="stress" fill="#ffb3b3" radius={[6, 6, 0, 0]} maxBarSize={40} />
+          </BarChart>
+        </ResponsiveContainer>
+        <div style={{ display: "flex", gap: 20, justifyContent: "center", marginTop: 12 }}>
+          {[["Sleep", C.bur2], ["Stress", "#ffb3b3"]].map(([label, color]) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 14, height: 14, borderRadius: 4, background: color }} />
+              <span style={{ fontSize: 12, color: C.txt3, fontWeight: 500 }}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Top symptoms */}
+      {topSymptoms.length > 0 && (
+        <div className="glass-card slide-up" style={{ padding: 28, marginBottom: 24 }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 4 }}>Your most common symptoms</h3>
+          <p style={{ fontSize: 13, color: C.txt3, marginBottom: 20 }}>Logged across {totalDaysLogged} day{totalDaysLogged !== 1 ? "s" : ""} of tracking</p>
+          {topSymptoms.map(([symptom, count], i) => (
+            <div key={symptom} style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+              <div style={{ width: 28, height: 28, borderRadius: "50%", background: C.bur6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: C.bur, flexShrink: 0 }}>{i + 1}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: C.txt }}>{symptom}</span>
+                  <span style={{ fontSize: 12, color: C.txt3 }}>{count} time{count !== 1 ? "s" : ""}</span>
+                </div>
+                <div style={{ height: 6, background: C.bur6, borderRadius: 3, overflow: "hidden" }}>
+                  <div style={{ width: `${(count / topSymptoms[0][1]) * 100}%`, height: "100%", background: `linear-gradient(90deg, ${C.bur}, ${C.bur3})`, borderRadius: 3, transition: "width 0.6s ease" }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Logging streak */}
+      <div className="glass-card slide-up" style={{ padding: 28, background: `linear-gradient(135deg, rgba(125,31,46,0.05), rgba(196,96,122,0.05))` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>📊</div>
+          <div style={{ flex: 1 }}>
+            <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 4 }}>Your tracking progress</h3>
+            <p style={{ fontSize: 14, color: C.txt2, lineHeight: 1.6 }}>
+              {totalDaysLogged === 0
+                ? "You haven't logged any data yet. Start today — even one entry makes predictions better!"
+                : totalDaysLogged < 7
+                ? `You've logged ${totalDaysLogged} day${totalDaysLogged !== 1 ? "s" : ""}. Keep going — 7+ days unlocks better insights!`
+                : totalDaysLogged < 28
+                ? `${totalDaysLogged} days logged! One full cycle of data will unlock highly personalised predictions.`
+                : `Amazing — ${totalDaysLogged} days of data! Your predictions are becoming highly personalised. 🎉`}
+            </p>
+          </div>
+          <div style={{ textAlign: "center", flexShrink: 0 }}>
+            <div className="serif" style={{ fontSize: 36, fontWeight: 600, color: C.bur }}>{totalDaysLogged}</div>
+            <div style={{ fontSize: 11, color: C.txt3, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px" }}>Days logged</div>
+          </div>
+        </div>
+        {periodDaysLogged > 0 && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid rgba(125,31,46,0.1)`, display: "flex", gap: 20 }}>
+            <div style={{ textAlign: "center" }}>
+              <div className="serif" style={{ fontSize: 22, color: C.bur }}>{periodDaysLogged}</div>
+              <div style={{ fontSize: 11, color: C.txt3 }}>Period days</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div className="serif" style={{ fontSize: 22, color: C.bur }}>{topSymptoms.length}</div>
+              <div style={{ fontSize: 11, color: C.txt3 }}>Symptoms tracked</div>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <div className="serif" style={{ fontSize: 22, color: C.bur }}>{Math.round((totalDaysLogged / 28) * 100)}%</div>
+              <div style={{ fontSize: 11, color: C.txt3 }}>Cycle coverage</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {!hasRealData && (
+        <div style={{ marginTop: 16, padding: "14px 18px", borderRadius: 14, background: C.bur6, display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ fontSize: 18 }}>💡</span>
+          <p style={{ fontSize: 13, color: C.txt2, lineHeight: 1.5 }}>The charts above show sample data. Go to the Calendar tab and tap any date to log your real data — it'll show here automatically.</p>
+        </div>
+      )}
     </div>
   );
 }
-
 /* ─────────────────────────────────────────────
    INSIGHTS VIEW
 ───────────────────────────────────────────── */
 function InsightsView({ cycleData }) {
   const phase = cycleData?.phase || "unknown";
   const phaseInfo = getPhaseInfo(phase);
-
   const insights = [
     { icon: "💧", title: "Hydration", desc: "Staying hydrated reduces bloating and supports hormone regulation throughout your cycle.", color: "#4dabf7" },
     { icon: "🏃", title: "Exercise", desc: phase === "follicular" || phase === "ovulation" ? "You're in a high-energy phase — great time for intense workouts and strength training!" : "Gentle movement like yoga and walking is ideal for your current phase.", color: "#51cf66" },
     { icon: "😴", title: "Sleep", desc: phase === "luteal" ? "Progesterone in your luteal phase can disrupt sleep. Try magnesium before bed and limit screens." : "Consistent sleep strengthens your hormonal balance. Aim for 7–9 hours each night.", color: "#845ef7" },
     { icon: "🧘", title: "Stress", desc: cycleData ? `You're in your ${phaseInfo?.label} phase. ${phase === "luteal" ? "Stress sensitivity is highest now — prioritise rest." : "This is a good time to handle challenging tasks."}` : "Track your cycle to get phase-specific stress tips.", color: "#ff6b6b" },
   ];
-
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
       <div className="fade-in" style={{ marginBottom: 32 }}>
@@ -856,60 +1341,47 @@ function InsightsView({ cycleData }) {
    CHAT VIEW
 ───────────────────────────────────────────── */
 function ChatView({ user, cycleData }) {
-  const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hey! 🎀 I'm your cycle health assistant. Ask me anything about your symptoms, cycle phases, nutrition, or how you're feeling today." }
-  ]);
+  const [messages, setMessages] = useState([{ role: "assistant", text: "Hey! 🎀 I'm your cycle health assistant. Ask me anything about your symptoms, cycle phases, nutrition, or how you're feeling today." }]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
-
-  const suggestions = [
-    "What should I eat during my period?",
-    "Why do I feel so tired on day 1?",
-    "What helps with cramps?",
-    "How do I manage PMS mood swings?",
-  ];
-
+  const suggestions = ["What should I eat during my period?", "Why do I feel so tired on day 1?", "What helps with cramps?", "How do I manage PMS mood swings?"];
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
-
   const ctx = cycleData ? { cycleDay: cycleData.cycleDay, phase: cycleData.phase, pmsRisk: cycleData.pmsRisk, nextPeriod: cycleData.nextPeriod, cycleLength: cycleData.cycleLength } : null;
-
   const getRuleBasedResponse = (text, ctx) => {
     const t = text.toLowerCase();
     const phaseMsg = ctx ? `By the way, you're currently on day ${ctx.cycleDay} of your cycle in your ${ctx.phase} phase.` : "";
-
     if (t.includes("cramp") || t.includes("pain")) return `For cramps, try a heating pad on your lower abdomen — one of the most effective remedies. Ibuprofen or naproxen taken at the first sign works best. Light movement like walking or yoga also helps. Magnesium supplements taken daily may reduce cramping over time. ${phaseMsg}`;
     if (t.includes("eat") || t.includes("food") || t.includes("diet") || t.includes("nutrition")) {
-      if (ctx?.phase === "period") return `During your period, focus on iron-rich foods like spinach, lentils, and red meat. Dark chocolate and magnesium-rich nuts ease cramps. Avoid excess salt and caffeine which worsen bloating. Warm ginger tea is great for comfort. 🍵`;
-      if (ctx?.phase === "follicular") return `In your follicular phase your estrogen is rising so metabolism is efficient. Focus on lean proteins, fermented foods like yogurt and kimchi, and plenty of vegetables. 🥗`;
-      if (ctx?.phase === "ovulation") return `During ovulation, focus on anti-inflammatory foods — berries, leafy greens, and omega-3 rich foods like salmon. Zinc-rich pumpkin seeds support healthy ovulation. ✨`;
-      if (ctx?.phase === "luteal") return `In your luteal phase cravings are normal — your body needs more calories. Focus on complex carbs like sweet potato and oats to stabilise mood. Dark chocolate is actually a good choice here! 🍫`;
+      if (ctx?.phase === "period") return `During your period, focus on iron-rich foods like spinach, lentils, and red meat. Dark chocolate and magnesium-rich nuts ease cramps. Avoid excess salt and caffeine which worsen bloating. 🍵`;
+      if (ctx?.phase === "follicular") return `In your follicular phase your estrogen is rising so metabolism is efficient. Focus on lean proteins, fermented foods like yogurt, and plenty of vegetables. 🥗`;
+      if (ctx?.phase === "ovulation") return `During ovulation, focus on anti-inflammatory foods — berries, leafy greens, and omega-3 rich salmon. Zinc-rich pumpkin seeds support healthy ovulation. ✨`;
+      if (ctx?.phase === "luteal") return `In your luteal phase cravings are normal. Focus on complex carbs like sweet potato and oats to stabilise mood. Dark chocolate is actually a good choice here! 🍫`;
       return `Eating well through your cycle makes a big difference. Iron and magnesium during your period, light and energising in follicular, anti-inflammatory around ovulation, and complex carbs in luteal. ${phaseMsg}`;
     }
-    if (t.includes("tired") || t.includes("fatigue") || t.includes("energy") || t.includes("exhausted")) return `Fatigue is one of the most common cycle symptoms. ${ctx?.phase === "period" ? "During your period your body is working hard — rest is essential." : ctx?.phase === "luteal" ? "In the luteal phase, progesterone has a sedative effect. Completely normal." : ""} Prioritise sleep, eat iron-rich foods, stay hydrated, and reduce caffeine. Light exercise can boost energy more than resting. ${phaseMsg}`;
-    if (t.includes("pms") || t.includes("mood") || t.includes("irritable") || t.includes("emotional") || t.includes("anxious")) return `PMS mood symptoms are caused by the drop in estrogen and progesterone before your period. ${ctx ? `Your current PMS risk is ${ctx.pmsRisk}%.` : ""} Magnesium (400mg daily), regular exercise, reducing sugar and caffeine, and getting enough sleep all genuinely help. ${phaseMsg}`;
-    if (t.includes("bloat")) return `Bloating is super common especially before your period. Reduce salt, avoid carbonated drinks, eat smaller meals, and try peppermint or ginger tea. Light movement helps. ${phaseMsg}`;
-    if (t.includes("headache") || t.includes("migraine")) return `Hormonal headaches are triggered by the drop in estrogen before your period. Stay hydrated, maintain consistent sleep, and avoid skipping meals. Magnesium supplementation reduces hormonal migraines significantly over time. ${phaseMsg}`;
-    if (t.includes("sleep") || t.includes("insomnia")) return `Sleep is strongly affected by your cycle. ${ctx?.phase === "luteal" ? "In your luteal phase, the hormone drop before your period can cause insomnia." : ctx?.phase === "period" ? "During your period, cramps can disrupt sleep — a heating pad and ibuprofen before bed help." : ""} Magnesium glycinate before bed is one of the most effective natural sleep aids. ${phaseMsg}`;
-    if (t.includes("exercise") || t.includes("workout") || t.includes("gym")) {
+    if (t.includes("tired") || t.includes("fatigue") || t.includes("energy")) return `Fatigue is one of the most common cycle symptoms. ${ctx?.phase === "period" ? "During your period your body is working hard — rest is essential." : ctx?.phase === "luteal" ? "In the luteal phase, progesterone has a sedative effect. Completely normal." : ""} Prioritise sleep, eat iron-rich foods, stay hydrated, and reduce caffeine. ${phaseMsg}`;
+    if (t.includes("pms") || t.includes("mood") || t.includes("irritable") || t.includes("anxious")) return `PMS mood symptoms are caused by the drop in estrogen and progesterone before your period. ${ctx ? `Your current PMS risk is ${ctx.pmsRisk}%.` : ""} Magnesium (400mg daily), regular exercise, reducing sugar and caffeine all genuinely help. ${phaseMsg}`;
+    if (t.includes("bloat")) return `Bloating is super common especially before your period. Reduce salt, avoid carbonated drinks, eat smaller meals, and try peppermint or ginger tea. ${phaseMsg}`;
+    if (t.includes("headache") || t.includes("migraine")) return `Hormonal headaches are triggered by the drop in estrogen before your period. Stay hydrated, maintain consistent sleep, and avoid skipping meals. ${phaseMsg}`;
+    if (t.includes("sleep") || t.includes("insomnia")) return `Sleep is strongly affected by your cycle. ${ctx?.phase === "luteal" ? "In your luteal phase, the hormone drop can cause insomnia." : ""} Magnesium glycinate before bed is one of the most effective natural sleep aids. ${phaseMsg}`;
+    if (t.includes("exercise") || t.includes("workout")) {
       if (ctx?.phase === "period") return `During your period, gentle movement releases endorphins that reduce cramps. Try walking, light yoga, or swimming. 🧘`;
       if (ctx?.phase === "follicular") return `Your follicular phase is the best time for high intensity workouts! Rising estrogen boosts strength and recovery. 💪`;
-      if (ctx?.phase === "ovulation") return `Around ovulation you have peak energy and strength. Great time for competitive sports or HIIT. ✨`;
-      if (ctx?.phase === "luteal") return `In your luteal phase shift toward moderate intensity — pilates, hiking, or yoga. Exercise still really helps with PMS. 🌙`;
-      return `Tuning workouts to your cycle improves performance and recovery. Strongest in follicular and ovulation, benefit most from gentle movement in luteal. ${phaseMsg}`;
+      if (ctx?.phase === "ovulation") return `Around ovulation you have peak energy and strength. Great time for HIIT or competitive sports. ✨`;
+      if (ctx?.phase === "luteal") return `In your luteal phase shift toward moderate intensity — pilates, hiking, or yoga. 🌙`;
+      return `Tuning workouts to your cycle improves performance and recovery. Strongest in follicular and ovulation, gentle movement in luteal. ${phaseMsg}`;
     }
     if (t.includes("phase") || t.includes("what phase")) {
-      if (ctx) { const info = getPhaseInfo(ctx.phase); return `You're currently in your ${info.label} phase (day ${ctx.cycleDay} of ${ctx.cycleLength}). ${info.tip} Your next period is expected around ${ctx.nextPeriod}.`; }
-      return `Your cycle has four phases: Menstrual (days 1–5), Follicular (days 6–12), Ovulation (days 13–15), and Luteal (days 16–28). Log your period date to see which phase you're in!`;
+      if (ctx) { const info = getPhaseInfo(ctx.phase); return `You're currently in your ${info.label} phase (day ${ctx.cycleDay} of ${ctx.cycleLength}). ${info.tip} Next period around ${ctx.nextPeriod}.`; }
+      return `Your cycle has four phases: Menstrual (days 1–5), Follicular (days 6–12), Ovulation (days 13–15), and Luteal (days 16–28). Log your period to see which phase you're in!`;
     }
     if (t.includes("next period") || t.includes("predict")) {
-      if (ctx) return `Based on your cycle data, your next period is expected around ${ctx.nextPeriod}. You're currently on day ${ctx.cycleDay} of your ${ctx.cycleLength}-day cycle.`;
-      return `Log your last period date in the app to get a prediction for your next period!`;
+      if (ctx) return `Based on your data, your next period is expected around ${ctx.nextPeriod}. You're currently on day ${ctx.cycleDay} of your ${ctx.cycleLength}-day cycle.`;
+      return `Log your last period date to get a prediction!`;
     }
-    if (t.includes("hello") || t.includes("hi") || t.includes("hey")) return `Hey there! 🌸 ${ctx ? `I can see you're on day ${ctx.cycleDay} of your cycle in your ${ctx.phase} phase.` : "Log your cycle data to get personalised insights!"} What can I help you with?`;
-    return `That's a great question! ${ctx ? `Given you're in your ${ctx.phase} phase (day ${ctx.cycleDay}), ` : ""}the pillars of good cycle health are: consistent sleep, magnesium-rich foods, regular gentle movement, and stress management. Is there something more specific I can help with? 🌸`;
+    if (t.includes("hello") || t.includes("hi") || t.includes("hey")) return `Hey there! 🌸 ${ctx ? `I can see you're on day ${ctx.cycleDay} in your ${ctx.phase} phase.` : "Log your cycle data to get personalised insights!"} What can I help you with?`;
+    return `That's a great question! ${ctx ? `Given you're in your ${ctx.phase} phase (day ${ctx.cycleDay}), ` : ""}the pillars of good cycle health are: consistent sleep, magnesium-rich foods, regular gentle movement, and stress management. 🌸`;
   };
-
   const handleSend = (text) => {
     const msg = text || input;
     if (!msg.trim() || loading) return;
@@ -922,29 +1394,19 @@ function ChatView({ user, cycleData }) {
       setLoading(false);
     }, 800);
   };
-
   return (
     <div style={{ maxWidth: 800, margin: "0 auto", height: "calc(100vh - 200px)", display: "flex", flexDirection: "column" }}>
       <div className="fade-in" style={{ marginBottom: 24 }}>
         <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Cycle Assistant</h1>
         <p style={{ fontSize: 15, color: C.txt2 }}>{ctx ? `Day ${ctx.cycleDay} · ${ctx.phase} phase` : "Ask me anything about your cycle"}</p>
       </div>
-
       <div className="glass-card" style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ flex: 1, overflowY: "auto", padding: 28 }}>
           {messages.map((msg, i) => (
             <div key={i} className="fade-in" style={{ display: "flex", gap: 12, marginBottom: 20, alignItems: "flex-start", justifyContent: msg.role === "user" ? "flex-end" : "flex-start" }}>
-              {msg.role === "assistant" && (
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🌸</div>
-              )}
-              <div style={{ maxWidth: "75%", padding: "12px 16px", borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px", background: msg.role === "user" ? `linear-gradient(135deg, ${C.bur}, ${C.bur2})` : "#fff", color: msg.role === "user" ? "#fff" : C.txt, fontSize: 14, lineHeight: 1.6, boxShadow: "0 2px 8px rgba(125,31,46,0.08)", whiteSpace: "pre-wrap" }}>
-                {msg.text}
-              </div>
-              {msg.role === "user" && (
-                <div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur3}, ${C.bur4})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>
-                  {user?.displayName?.[0]?.toUpperCase() || "U"}
-                </div>
-              )}
+              {msg.role === "assistant" && (<div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur2})`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>🌸</div>)}
+              <div style={{ maxWidth: "75%", padding: "12px 16px", borderRadius: msg.role === "user" ? "18px 18px 4px 18px" : "4px 18px 18px 18px", background: msg.role === "user" ? `linear-gradient(135deg, ${C.bur}, ${C.bur2})` : "#fff", color: msg.role === "user" ? "#fff" : C.txt, fontSize: 14, lineHeight: 1.6, boxShadow: "0 2px 8px rgba(125,31,46,0.08)", whiteSpace: "pre-wrap" }}>{msg.text}</div>
+              {msg.role === "user" && (<div style={{ width: 36, height: 36, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur3}, ${C.bur4})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, flexShrink: 0 }}>{user?.displayName?.[0]?.toUpperCase() || "U"}</div>)}
             </div>
           ))}
           {loading && (
@@ -957,15 +1419,11 @@ function ChatView({ user, cycleData }) {
           )}
           <div ref={messagesEndRef} />
         </div>
-
         {messages.length === 1 && (
           <div style={{ padding: "0 20px 12px", display: "flex", gap: 8, overflowX: "auto", flexShrink: 0 }}>
-            {suggestions.map(s => (
-              <button key={s} onClick={() => handleSend(s)} style={{ background: C.bur6, border: `1px solid ${C.bur4}`, borderRadius: 20, padding: "8px 16px", fontSize: 12, color: C.bur, cursor: "pointer", whiteSpace: "nowrap", fontWeight: 500 }}>{s}</button>
-            ))}
+            {suggestions.map(s => (<button key={s} onClick={() => handleSend(s)} style={{ background: C.bur6, border: `1px solid ${C.bur4}`, borderRadius: 20, padding: "8px 16px", fontSize: 12, color: C.bur, cursor: "pointer", whiteSpace: "nowrap", fontWeight: 500 }}>{s}</button>))}
           </div>
         )}
-
         <div style={{ borderTop: `1px solid rgba(125,31,46,0.1)`, padding: 20 }}>
           <div style={{ display: "flex", gap: 12 }}>
             <input type="text" className="input-field" placeholder="Ask about symptoms, cycle phases, or wellness..." value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSend()} style={{ flex: 1 }} />
@@ -986,37 +1444,28 @@ function ProfileView({ user, onCycleUpdate }) {
   const [lastPeriodDate, setLastPeriodDate] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-
   useEffect(() => {
     const load = async () => {
       if (!user?.uid) return;
       const settings = await getCycleSettings(user.uid);
-      if (settings) {
-        setCycleLength(settings.cycleLength || 28);
-        setPeriodDuration(settings.periodDuration || 5);
-        setLastPeriodDate(settings.lastPeriodDate || "");
-      }
+      if (settings) { setCycleLength(settings.cycleLength || 28); setPeriodDuration(settings.periodDuration || 5); setLastPeriodDate(settings.lastPeriodDate || ""); }
     };
     load();
   }, [user]);
-
   const handleSave = async () => {
     if (!user?.uid) return;
     setSaving(true);
     await saveCycleSettings(user.uid, { cycleLength: +cycleLength, periodDuration: +periodDuration, lastPeriodDate });
-    setSaving(false);
-    setSaved(true);
+    setSaving(false); setSaved(true);
     if (onCycleUpdate) onCycleUpdate();
     setTimeout(() => setSaved(false), 2500);
   };
-
   return (
     <div style={{ maxWidth: 700, margin: "0 auto" }}>
       <div className="fade-in" style={{ marginBottom: 32 }}>
         <h1 style={{ fontSize: 32, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Profile</h1>
         <p style={{ fontSize: 15, color: C.txt2 }}>Manage your account and cycle settings</p>
       </div>
-
       <div className="glass-card slide-up" style={{ padding: 40, textAlign: "center", marginBottom: 24 }}>
         <div style={{ width: 100, height: 100, borderRadius: "50%", background: `linear-gradient(135deg, ${C.bur}, ${C.bur3})`, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 42, margin: "0 auto 20px", border: `4px solid ${C.bur5}`, boxShadow: "0 8px 24px rgba(125,31,46,0.2)" }}>
           {user?.displayName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
@@ -1024,7 +1473,6 @@ function ProfileView({ user, onCycleUpdate }) {
         <h2 style={{ fontSize: 24, fontWeight: 700, color: C.txt, marginBottom: 6 }}>{user?.displayName || user?.email?.split("@")[0] || "User"}</h2>
         <p style={{ fontSize: 14, color: C.txt3 }}>{user?.email}</p>
       </div>
-
       <div className="glass-card slide-up" style={{ padding: 32, marginBottom: 24 }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: C.txt, marginBottom: 20 }}>Cycle Settings</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1045,16 +1493,13 @@ function ProfileView({ user, onCycleUpdate }) {
           {saving ? "Saving..." : saved ? "✓ Saved!" : "Save Changes"}
         </button>
       </div>
-
-      <button onClick={() => logOut()} className="btn-secondary" style={{ width: "100%", justifyContent: "center", color: "#ff4757", borderColor: "#ff4757" }}>
-        Sign Out
-      </button>
+      <button onClick={() => logOut()} className="btn-secondary" style={{ width: "100%", justifyContent: "center", color: "#ff4757", borderColor: "#ff4757" }}>Sign Out</button>
     </div>
   );
 }
 
 /* ─────────────────────────────────────────────
-   LOG MODAL
+   LOG MODAL (today's quick log)
 ───────────────────────────────────────────── */
 function LogModal({ onClose, uid }) {
   const [mood, setMood] = useState(7);
@@ -1064,31 +1509,25 @@ function LogModal({ onClose, uid }) {
   const [lastPeriodDate, setLastPeriodDate] = useState("");
   const [selectedSymptoms, setSelectedSymptoms] = useState([]);
   const [saving, setSaving] = useState(false);
-
-  const toggleSymptom = (symptom) => setSelectedSymptoms(prev => prev.includes(symptom) ? prev.filter(s => s !== symptom) : [...prev, symptom]);
-
+  const toggleSymptom = (s) => setSelectedSymptoms(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const handleSave = async () => {
     if (!uid) { onClose(); return; }
     setSaving(true);
     const today = new Date().toISOString().split("T")[0];
     await saveDailyLog(uid, today, { mood: +mood, sleep: +sleep, stress: +stress, energy: +energy, symptoms: selectedSymptoms });
-    if (lastPeriodDate) {
-      await saveCycleSettings(uid, { lastPeriodDate, cycleLength: 28, periodDuration: 5 });
-    }
+    if (lastPeriodDate) await saveCycleSettings(uid, { lastPeriodDate, cycleLength: 28, periodDuration: 5 });
     setSaving(false);
     onClose();
   };
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(26,10,13,0.6)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 20 }} onClick={onClose}>
       <div className="glass-card scale-in" style={{ maxWidth: 600, width: "100%", maxHeight: "90vh", overflowY: "auto", padding: 40, position: "relative", background: "rgba(255,255,255,0.98)" }} onClick={e => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: "absolute", top: 20, right: 20, background: "none", border: "none", cursor: "pointer", color: C.txt3, padding: 8 }}>{Icon.close()}</button>
         <h2 style={{ fontSize: 28, fontWeight: 700, color: C.txt, marginBottom: 8 }}>Log Today</h2>
         <p style={{ fontSize: 14, color: C.txt2, marginBottom: 32 }}>Track how you're feeling</p>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 28 }}>
           <div>
-            <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.txt, marginBottom: 12 }}>Last period start date <span style={{ color: C.txt3, fontWeight: 400 }}>(optional — updates predictions)</span></label>
+            <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.txt, marginBottom: 12 }}>Last period start date <span style={{ color: C.txt3, fontWeight: 400 }}>(optional)</span></label>
             <input type="date" className="input-field" value={lastPeriodDate} onChange={e => setLastPeriodDate(e.target.value)} />
           </div>
           <div>
@@ -1110,9 +1549,7 @@ function LogModal({ onClose, uid }) {
           <div>
             <label style={{ display: "block", fontSize: 14, fontWeight: 600, color: C.txt, marginBottom: 12 }}>Symptoms</label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {symptoms.map(s => (
-                <button key={s} onClick={() => toggleSymptom(s)} className="tag" style={{ background: selectedSymptoms.includes(s) ? C.bur : C.bur6, color: selectedSymptoms.includes(s) ? C.bur5 : C.txt2, border: `1.5px solid ${selectedSymptoms.includes(s) ? C.bur : "rgba(125,31,46,0.2)"}` }}>{s}</button>
-              ))}
+              {symptoms.map(s => (<button key={s} onClick={() => toggleSymptom(s)} className="tag" style={{ background: selectedSymptoms.includes(s) ? C.bur : C.bur6, color: selectedSymptoms.includes(s) ? C.bur5 : C.txt2, border: `1.5px solid ${selectedSymptoms.includes(s) ? C.bur : "rgba(125,31,46,0.2)"}` }}>{s}</button>))}
             </div>
           </div>
           <button className="btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 12, padding: "16px" }} onClick={handleSave} disabled={saving}>
@@ -1131,7 +1568,6 @@ export default function TrackHer() {
   const { user } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState("signup");
-
   if (user === undefined) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: C.bur5 }}>
@@ -1143,18 +1579,13 @@ export default function TrackHer() {
       </div>
     );
   }
-
   if (!user) {
     return (
       <>
-        <LandingPage
-          onGetStarted={() => { setAuthMode("signup"); setShowAuthModal(true); }}
-          onLogin={() => { setAuthMode("signin"); setShowAuthModal(true); }}
-        />
+        <LandingPage onGetStarted={() => { setAuthMode("signup"); setShowAuthModal(true); }} onLogin={() => { setAuthMode("signin"); setShowAuthModal(true); }} />
         {showAuthModal && <AuthModal mode={authMode} onClose={() => setShowAuthModal(false)} onSuccess={() => setShowAuthModal(false)} />}
       </>
     );
   }
-
   return <Dashboard />;
 }
