@@ -34,7 +34,9 @@ Deployment: Vercel
 ![Landing](./public/landing.png)
 ![Dashboard](./public/dashboard.png)
 ![Calendar](./public/calendar.png)
-![Wellness](./public/wellness.png)
+![Wellness](./public/wellness(1).png)
+![Wellness](./public/wellness(2).png)
+![Wellness](./public/wellness(3).png)
 
 ---
 
