@@ -40,7 +40,7 @@ Deployment: Vercel
 
 ---
 
-## Status
+## Development Status
 
 UI and core flows completed  
 Rule-based predictions working  
